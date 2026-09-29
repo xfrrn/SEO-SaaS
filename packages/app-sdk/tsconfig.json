@@ -1,0 +1,22 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": [
+      "esnext",
+      "dom",
+      "dom.iterable"
+    ]
+  },
+  "include": [
+    "./src",
+    "./package.json"
+  ],
+  "references": [
+    {
+      "path": "../better-auth/tsconfig.json"
+    },
+    {
+      "path": "../stripe/tsconfig.json"
+    }
+  ]
+}

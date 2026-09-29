@@ -1,0 +1,276 @@
+---
+title: SDK 中文快速接入
+description: 将认证与可选 Stripe 个人订阅接入现有 Next.js／React 项目，使用 PostgreSQL 保存用户、会话和订阅。
+---
+
+`@app/auth-sdk` 是本仓库提供的本地 SDK 包。它按用途重新导出 Better Auth 的原生接口，方法名、参数、返回值、错误和插件类型推导保持不变。你负责把服务端挂到自己的项目，浏览器通过 SDK 调用它。
+
+默认示例使用 Next.js App Router、React、PostgreSQL 和邮箱密码登录。Stripe 单独开启；只接入认证时不需要支付密钥。可复制的源码在仓库的 `packages/app-sdk/examples/nextjs/`，插件选择见 [SDK 插件分类手册](/docs/guides/sdk-plugins-zh)。
+
+## 安装
+
+SDK 尚未发布到公共包仓库。先在 Better Auth 仓库根目录构建，再生成本地安装包：
+
+```bash
+pnpm install --frozen-lockfile
+pnpm exec turbo run build --filter=@app/auth-sdk
+pnpm --filter @app/auth-sdk pack --out packages/app-sdk/auth-sdk.tgz
+```
+
+安装包生成在 `packages/app-sdk/auth-sdk.tgz`。将它复制到现有项目的 `vendor/auth-sdk.tgz`，在该项目根目录执行：
+
+```bash
+pnpm add ./vendor/auth-sdk.tgz better-auth@1.7.6 pg
+pnpm add -D @types/pg
+```
+
+这里的 `better-auth` 版本与当前仓库对应，SDK 不会把整套认证库复制进安装包。后续更新时保持 SDK、`better-auth` 和所用官方插件版本匹配。已有 Next.js／React 项目继续使用自己的框架依赖；基础示例只额外需要 `pg`。本示例使用 Node.js 路由运行时，因为 `pg` 需要 PostgreSQL 连接；SDK 的重新导出本身不绑定数据库或运行时。
+
+| 你要写的代码 | 导入入口 |
+| --- | --- |
+| 服务端认证配置与类型 | `@app/auth-sdk/server` |
+| React 客户端、`useSession` | `@app/auth-sdk/react` |
+| Next.js 路由和 Cookie 集成 | `@app/auth-sdk/next-js` |
+| 内置服务端／客户端插件 | `@app/auth-sdk/plugins`、`@app/auth-sdk/client/plugins` |
+| 可选 Stripe 服务端／客户端插件 | `@app/auth-sdk/stripe`、`@app/auth-sdk/stripe/client` |
+
+浏览器文件只导入 `/react`、`/client/plugins` 和 `/stripe/client` 等客户端入口。数据库、密钥、`auth` 服务端实例留在服务端；需要类型时使用 `import type`。
+
+## 环境变量与服务端配置
+
+将示例的 `.env.example` 复制为项目根目录的 `.env`，先只填写三个认证变量：
+
+```dotenv title=".env"
+BETTER_AUTH_SECRET=替换为至少32字符的高熵随机密钥
+BETTER_AUTH_URL=http://localhost:3000
+DATABASE_URL=postgresql://用户名:密码@localhost:5432/数据库名
+```
+
+`BETTER_AUTH_URL` 是网站完整 origin，部署后改为实际 HTTPS 域名。`DATABASE_URL` 从你的 PostgreSQL 服务或数据库管理员取得。密钥可用 `npx auth@latest secret` 生成；这些变量都只供服务端读取，不要加 `NEXT_PUBLIC_` 前缀，也不要提交到 Git。使用 `.env` 可让 Next.js 和 CLI 读取同一份本地配置；生产环境通过部署平台注入。
+
+把示例目录里的 `lib/` 复制到项目的 `lib/`，或使用 `src/` 布局时复制到 `src/lib/`。其中 `env.ts` 检查必填变量，`database.ts` 创建可复用的 `pg.Pool`，`auth.ts` 配置认证，`auth-client.ts` 提供 React 客户端。已有文件请合并配置，尤其保留原项目的数据库池和应用布局。
+
+核心配置如下，完整文件以示例为准：
+
+```ts title="lib/auth.ts"
+import { betterAuth } from "@app/auth-sdk/server";
+import { nextCookies } from "@app/auth-sdk/next-js";
+import { database } from "./database";
+import { requiredEnv } from "./env";
+
+export const auth = betterAuth({
+  secret: requiredEnv("BETTER_AUTH_SECRET"),
+  baseURL: requiredEnv("BETTER_AUTH_URL"),
+  database,
+  emailAndPassword: { enabled: true },
+  plugins: [nextCookies()],
+});
+```
+
+`nextCookies()` 必须位于插件列表末尾，负责 Server Action 写 Cookie。默认接口前缀是 `/api/auth`，同域客户端无需再填写 baseURL。
+
+```ts title="lib/auth-client.ts"
+import { createAuthClient } from "@app/auth-sdk/react";
+
+export const authClient = createAuthClient();
+```
+
+## 数据库建表
+
+先确认连接指向你准备接入的开发数据库，在应用根目录运行：
+
+```bash
+npx auth@latest migrate --config ./lib/auth.ts
+```
+
+使用 `src/` 时将路径改为 `./src/lib/auth.ts`。命令会检查并应用用户、账户、会话、验证码等需要的表；阅读迁移提示后再确认。新增改变 schema 的插件后，重新运行迁移。已有生产数据应经过你原有的备份、审核和部署流程。
+
+### 现有项目已经使用 Prisma 或 Drizzle
+
+保留现有 ORM 实例，只替换服务端配置中的 `database`，无需再创建 `pg.Pool`：
+
+```ts title="Prisma 配置片段"
+import { prismaAdapter } from "better-auth/adapters/prisma";
+
+// prisma 是项目已有的 PrismaClient 实例。
+const database = prismaAdapter(prisma, { provider: "postgresql" });
+```
+
+```ts title="Drizzle 配置片段"
+import { drizzleAdapter } from "better-auth/adapters/drizzle";
+
+// db 是项目已有的 Drizzle 实例；schema 包含生成的认证表。
+const database = drizzleAdapter(db, { provider: "pg", schema });
+```
+
+这些适配器使用原生导入路径，不需要 SDK 再封装。改为运行 `npx auth@latest generate --config ./lib/auth.ts`，审阅并合并生成的 schema，再通过你现有的 ORM 迁移工具应用；`auth migrate` 用于默认 Kysely／`pg` 路径，不用于直接执行 Prisma／Drizzle 迁移。细节见 [Prisma](/docs/adapters/prisma)、[Drizzle](/docs/adapters/drizzle) 与 [CLI](/docs/concepts/cli)。
+
+## 挂载接口
+
+将示例的路由放到 `app/api/auth/[...all]/route.ts`；使用 `src/` 时放到 `src/app/` 下。示例的其他文件也按同一布局复制。
+
+```ts title="app/api/auth/[...all]/route.ts"
+import { toNextJsHandler } from "@app/auth-sdk/next-js";
+import { auth } from "../../../../lib/auth";
+
+export const runtime = "nodejs";
+export const { GET, POST } = toNextJsHandler(auth);
+```
+
+这里的路由同时处理注册、登录、会话和启用后的 Stripe webhook。无需为每个 SDK 方法手写 API。接口路径与项目其他路由冲突时，需同步配置服务端和客户端的 `basePath`，详见 [Next.js 集成](/docs/integrations/next)。
+
+## 登录、会话与页面保护
+
+示例首页包含注册、登录和退出界面；已有项目可以只复制调用逻辑，保留原来的 UI。以下代码放在客户端组件的事件处理函数中，输入来自你的表单：
+
+```ts
+const { data, error } = await authClient.signUp.email({
+  name: "示例用户",
+  email: "user@example.com",
+  password: "替换成用户输入的密码",
+});
+if (error) throw new Error(error.message);
+```
+
+登录、退出和主动查询会话分别使用：
+
+```ts
+const result = await authClient.signIn.email({ email, password });
+if (result.error) throw new Error(result.error.message);
+
+const sessionResult = await authClient.getSession();
+if (sessionResult.error) throw new Error(sessionResult.error.message);
+const user = sessionResult.data?.user;
+
+const signOutResult = await authClient.signOut();
+if (signOutResult.error) throw new Error(signOutResult.error.message);
+```
+
+这些是独立操作，分别接到相应按钮／事件，不要按顺序一次全部执行。客户端通常返回 `{ data, error }`；在 UI 中捕获异常并展示错误，完整示例已处理。React 页面使用 Hook 自动刷新登录状态：
+
+```tsx title="components/current-user.tsx"
+"use client";
+
+import { authClient } from "../lib/auth-client";
+
+export function CurrentUser() {
+  const { data, isPending, error } = authClient.useSession();
+  if (isPending) return <p>正在读取登录状态…</p>;
+  if (error) return <p role="alert">{error.message}</p>;
+  return <p>{data ? `你好，${data.user.name}` : "尚未登录"}</p>;
+}
+```
+
+服务端页面和业务接口必须使用当前请求的 headers 验证会话。已携带 headers 但没有有效 Cookie 时，返回 `null`；省略 headers 是无效用法。
+
+```tsx title="app/account/page.tsx"
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
+import { auth } from "../../lib/auth";
+
+export default async function AccountPage() {
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session) redirect("/");
+  return <p>已登录：{session.user.email}</p>;
+}
+```
+
+服务端 `auth.api.*` 返回数据本身，失败时抛出错误；不要套用客户端的 `{ data, error }` 解构。隐藏页面按钮或只检查 Cookie 是否存在，不能代替业务 API 的会话校验。
+
+## 开启 Stripe 个人订阅
+
+### 安装并准备价格
+
+在现有应用安装支付依赖，版本与基础认证保持一致：
+
+```bash
+pnpm add @better-auth/stripe@1.7.6 stripe@^22
+```
+
+在 Stripe 测试环境建立 `basic` 和 `pro` 两个套餐，每个套餐创建月付、年付两个 recurring price。记录 `price_...`，不要填写 `prod_...` 产品 ID。然后补齐服务端环境变量：
+
+```dotenv title=".env 新增内容"
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+STRIPE_PRICE_BASIC_MONTHLY=price_...
+STRIPE_PRICE_BASIC_YEARLY=price_...
+STRIPE_PRICE_PRO_MONTHLY=price_...
+STRIPE_PRICE_PRO_YEARLY=price_...
+```
+
+secret key 从 Stripe 开发者控制台取得；webhook secret 来自下方创建的 webhook endpoint 或本地监听器。价格、密钥和 webhook 必须来自同一 Stripe 环境。本示例使用托管 Checkout，不需要浏览器中的 Stripe publishable key。
+
+### 合并可选支付配置
+
+将示例 `billing/lib/auth.ts`、`billing/lib/auth-client.ts` 的内容合并到应用现有对应文件；它们替换基础示例的两个配置文件。再将 `billing/app/` 下的订阅页面与受保护 API 复制到应用的 `app/` 中。`billing/` 是可选文件的存放目录，**不要把它作为项目的目录前缀原样复制**。
+
+服务端使用 `stripe({ stripeClient, stripeWebhookSecret, createCustomerOnSignUp: true, subscription: { enabled: true, plans: [...] } })`，放在 `nextCookies()` 前面。每个 plan 的 `priceId` 对应月付，`annualDiscountPriceId` 对应年付。客户端启用订阅能力：
+
+```ts title="lib/auth-client.ts"
+import { createAuthClient } from "@app/auth-sdk/react";
+import { stripeClient } from "@app/auth-sdk/stripe/client";
+
+export const authClient = createAuthClient({
+  plugins: [stripeClient({ subscription: true })],
+});
+```
+
+重新运行 `npx auth@latest migrate --config ./lib/auth.ts`，添加 Stripe customer 字段和订阅表。使用 ORM 时重新生成并应用 ORM 迁移。
+
+### 配置 webhook 和账单门户
+
+在 Stripe 中创建 webhook endpoint，地址为 `https://你的域名/api/auth/stripe/webhook`，至少订阅：
+
+- `checkout.session.completed`
+- `customer.subscription.created`
+- `customer.subscription.updated`
+- `customer.subscription.deleted`
+
+将 endpoint 的 signing secret 写入 `STRIPE_WEBHOOK_SECRET`。本地可通过已安装的 Stripe CLI 运行 `stripe listen --forward-to localhost:3000/api/auth/stripe/webhook`，使用这次监听器给出的 `whsec_...`；它和控制台 endpoint 的 secret 不同。插件直接处理原始 webhook 请求并验签，沿用插件的同步逻辑，不要先消费请求 body 或自行跳过验签。
+
+在 Stripe 的 Billing Portal 设置中启用所需的套餐切换和取消功能，并配置允许切换的产品／价格。示例取消操作会打开该门户，请在门户中完成确认。
+
+### 订阅 API 对照
+
+复制后的 `/billing` 页面已提供这些操作和错误提示：
+
+| 操作 | 客户端原生方法 | 注意事项 |
+| --- | --- | --- |
+| 查询订阅 | `authClient.subscription.list()` | 仅返回 `active`／`trialing` 的有效订阅，不是账单历史 |
+| 开始月付／年付 | `authClient.subscription.upgrade({ plan: "pro", annual: false, successUrl: "/billing", cancelUrl: "/billing" })` | 年付使用 `annual: true`；默认关联当前登录用户 |
+| 切换套餐／周期 | 同一 `upgrade` 方法，并传 `subscriptionId: current.stripeSubscriptionId` | 使用当前订阅的 Stripe ID，避免重复创建；默认即时处理并可能产生按比例账单 |
+| 取消订阅 | `authClient.subscription.cancel({ subscriptionId, returnUrl: "/billing" })` | 打开账单门户确认；计划期末取消时，状态可能仍是 `active` |
+| 恢复续订／撤销计划切换 | `authClient.subscription.restore({ subscriptionId })` | 仅适用于仍有效、待取消或待切换的订阅；不能恢复已经结束的订阅 |
+| 打开账单管理 | `authClient.subscription.billingPortal({ returnUrl: "/billing" })` | 管理支付方式、发票与订阅 |
+
+`subscriptionId` 指 Stripe 的 `sub_...` ID，不是本地订阅记录的 `id`。调用切换、取消或恢复前先查询并确认该 ID 存在。示例不接收用户提供的任意 `referenceId`，按插件默认规则使用当前用户身份；组织付费需要另外实现相应授权。
+
+服务端使用 `auth.api.listActiveSubscriptions({ headers: request.headers })` 查询订阅。示例 `/api/premium` 先检查会话，再读取有效订阅，仅对 `active`／`trialing` 状态放行；支付成功的 URL 参数或客户端显示不能授予权限。如果业务有套餐等级、额度或宽限期要求，在业务 API 增加相应判断。webhook 尚未同步时，显示等待状态并刷新订阅，不直接开通付费功能。
+
+更完整的参数、生命周期回调和 schema 见 [Stripe 插件文档](/docs/plugins/stripe)。
+
+## 从旧 SDK 替换调用
+
+以下左列表示旧 SDK 的功能，不假定你旧项目的实际方法名：
+
+| 原有功能 | 新的调用／改动 |
+| --- | --- |
+| 注册／登录 | `authClient.signUp.email`／`authClient.signIn.email`，保留旧表单 |
+| 退出 | `authClient.signOut`，按结果清理页面状态 |
+| 前端当前用户 | `authClient.useSession()` 或 `getSession()`，用户位于 `data.user` |
+| 服务端当前用户 | `auth.api.getSession({ headers })`，用户位于 `session.user` |
+| 页面／接口保护 | 服务端验证会话；付费 API 额外验证订阅状态 |
+| 用户 ID 外键 | 明确旧用户 ID 与新用户 ID 的映射，再迁移业务关联 |
+| 密码、旧 token、旧 Cookie | 不会自动兼容；确认密码哈希方案与会话格式后设计迁移或重新登录 |
+
+先在开发环境接通注册、登录、退出与受保护 API，再开启支付并验证测试订阅。数据库建表不会导入旧用户；旧用户、密码与登录态迁移需检查旧 SDK 后单独实施。
+
+## 接入完成后检查
+
+- 未登录访问受保护 API 被拒绝；登录后能读取当前用户；退出后恢复拒绝。
+- 只使用基础文件时，缺少 Stripe 依赖或环境变量不影响认证。
+- 支付开启后，月付和年付进入对应价格；切换套餐使用当前 Stripe subscription ID。
+- 有效 webhook 更新数据库，错误签名被拒绝；未同步或无有效订阅时，付费 API 不放行。
+- 期末取消、恢复和门户返回后重新读取订阅；已结束订阅不能通过恢复接口重新开通。
+
+本地示例的 PostgreSQL 与 Stripe 联调需要你提供测试服务和测试凭证；源码构建或类型检查通过不能代替这两项实际接入验证。

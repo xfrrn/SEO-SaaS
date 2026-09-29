@@ -1,0 +1,119 @@
+---
+title: SDK 插件分类手册
+description: 按用途选择认证、安全、组织、企业集成和支付插件，确认安装包、两端入口与额外配置。
+---
+
+先完成 [SDK 中文快速接入](/docs/guides/sdk-quickstart-zh)，再根据需要添加插件。插件不会因为安装了 SDK 自动启用：服务端在 `betterAuth({ plugins: [...] })` 注册，客户端在 `createAuthClient({ plugins: [...] })` 注册对应插件。
+
+## 如何看这份清单
+
+| 类型 | 安装与导入方式 |
+| --- | --- |
+| 核心功能 | 邮箱密码、会话、内置社交登录属于 `better-auth`，不需要另装插件。 |
+| 内置插件 | 已随 `better-auth` 安装。表中“内置”服务端入口为 `@app/auth-sdk/plugins`，客户端入口为 `@app/auth-sdk/client/plugins`。 |
+| 官方独立包 | 使用 `pnpm add 包名` 单独安装，从表中的原始包路径导入。Stripe 额外提供 SDK 专用入口。 |
+| 外部插件 | 由其他供应商维护，单独安装并按各自文档配置；不通过 SDK 的 `/plugins` 导出。 |
+
+表中的 `—` 表示不需要 Better Auth 客户端插件，不代表不需要页面、第三方客户端或服务端配置。导入名称区分大小写。涉及新增表或字段的插件需要重新生成／迁移数据库，方法见各插件的 Schema 部分；`nextCookies()` 始终放在服务端插件数组最后。
+
+例如启用用户名登录：
+
+```ts title="lib/auth.ts 中的新增内容"
+import { username } from "@app/auth-sdk/plugins";
+
+// 添加到 betterAuth 的 plugins 数组，放在 nextCookies() 前面：
+username();
+```
+
+```ts title="lib/auth-client.ts"
+import { createAuthClient } from "@app/auth-sdk/react";
+import { usernameClient } from "@app/auth-sdk/client/plugins";
+
+export const authClient = createAuthClient({
+  plugins: [usernameClient()],
+});
+
+// 完成数据库迁移后，可调用 authClient.signIn.username({ username, password })。
+```
+
+保持插件数组的具体类型，让 TypeScript 推导出插件方法；不要把实例声明为过于宽泛的公共配置类型。
+
+## 登录认证
+
+| 插件／用途 | 安装包 | 服务端入口与名称 | 客户端入口与名称 | 额外配置 |
+| --- | --- | --- | --- | --- |
+| [用户名](/docs/plugins/username)：用户名密码登录 | 内置 | 内置 `username` | 内置 `usernameClient` | 用户名规则；用户字段迁移 |
+| [匿名用户](/docs/plugins/anonymous)：先试用后注册 | 内置 | 内置 `anonymous` | 内置 `anonymousClient` | 匿名账户转正式账户时的数据关联；用户字段迁移 |
+| [手机号](/docs/plugins/phone-number)：短信验证码登录 | 内置 | 内置 `phoneNumber` | 内置 `phoneNumberClient` | `sendOTP` 短信发送实现、手机号规则；用户字段迁移 |
+| [邮件链接](/docs/plugins/magic-link)：点击邮件登录 | 内置 | 内置 `magicLink` | 内置 `magicLinkClient` | 实现 `sendMagicLink` 并配置邮件服务 |
+| [邮件验证码](/docs/plugins/email-otp)：登录、验证邮箱、重置密码 | 内置 | 内置 `emailOTP` | 内置 `emailOTPClient` | 实现 `sendVerificationOTP` 并配置邮件服务 |
+| [Passkey](/docs/plugins/passkey)：指纹／设备密钥登录 | `@better-auth/passkey` | `@better-auth/passkey` → `passkey` | `@better-auth/passkey/client` → `passkeyClient` | RP ID、名称、可信 origin；Passkey 表迁移 |
+| [通用 OAuth](/docs/plugins/generic-oauth)：接入自定义 OAuth／OIDC 身份源 | 内置 | 内置 `genericOAuth` | —，使用核心 `signIn.social` | provider ID、client ID、secret、发现地址或端点、回调地址 |
+| [Google One Tap](/docs/plugins/one-tap)：Google 一键登录 | 内置 | 内置 `oneTap` | 内置 `oneTapClient` | Google client ID、Google provider 和允许的 origin |
+| [以太坊登录](/docs/plugins/siwe)：钱包签名登录 | 内置 | 内置 `siwe` | 内置 `siweClient` | domain、随机 nonce 生成、真实签名校验；钱包表迁移 |
+| [设备授权](/docs/plugins/device-authorization)：CLI／电视上登录 | 内置 | 内置 `deviceAuthorization` | 内置 `deviceAuthorizationClient` | 用户确认页面 `verificationUri`、设备码表；OAuth token 模式另需 OAuth Provider |
+
+Google、GitHub 等 [内置社交登录](/docs/concepts/oauth) 直接配置 `socialProviders`，客户端使用 `signIn.social`。只有身份源未内置或需要自定义协议配置时，才需要 `genericOAuth`。
+
+## 安全与令牌
+
+| 插件／用途 | 安装包 | 服务端入口与名称 | 客户端入口与名称 | 额外配置 |
+| --- | --- | --- | --- | --- |
+| [双因素认证](/docs/plugins/2fa)：TOTP、OTP、备用码 | 内置 | 内置 `twoFactor` | 内置 `twoFactorClient` | issuer、验证页面；使用邮件／短信 OTP 时实现发送函数；表迁移 |
+| [Captcha](/docs/plugins/captcha)：阻止自动化滥用 | 内置 | 内置 `captcha` | —，按供应商取得并提交 token | provider、服务端 secret、前端 site key；BotID 按文档单独集成 |
+| [泄露密码检查](/docs/plugins/have-i-been-pwned)：拒绝已泄露密码 | 内置 | 内置 `haveIBeenPwned` | — | 服务端访问 HIBP；可配置错误文案 |
+| [Bearer](/docs/plugins/bearer)：通过 Authorization 传会话 token | 内置 | 内置 `bearer` | —，配置客户端请求头 | 安全保存 token；跨域时配置所需 CORS 暴露头 |
+| [JWT](/docs/plugins/jwt)：供外部服务校验的 JWT／JWKS | 内置 | 内置 `jwt` | 内置 `jwtClient` | issuer、audience、签名策略；密钥表迁移；不会自动替换主会话 |
+| [一次性令牌](/docs/plugins/one-time-token)：一次性交换会话 | 内置 | 内置 `oneTimeToken` | 内置 `oneTimeTokenClient` | 令牌过期时间；接收端验证与会话落地 |
+| [API Key](/docs/plugins/api-key)：为用户／组织提供程序访问凭证 | `@better-auth/api-key` | `@better-auth/api-key` → `apiKey` | `@better-auth/api-key/client` → `apiKeyClient` | 权限、限流、有效期和归属；密钥表迁移；见[高级用法](/docs/plugins/api-key/advanced)和[参考](/docs/plugins/api-key/reference) |
+
+## 组织与权限
+
+| 插件／用途 | 安装包 | 服务端入口与名称 | 客户端入口与名称 | 额外配置 |
+| --- | --- | --- | --- | --- |
+| [组织](/docs/plugins/organization)：成员、邀请、角色、团队 | 内置 | 内置 `organization` | 内置 `organizationClient` | 角色／权限、邀请发送、团队选项；组织及成员表迁移 |
+| [管理后台](/docs/plugins/admin)：管理用户、封禁、代登录 | 内置 | 内置 `admin` | 内置 `adminClient` | 管理员角色、授权规则；用户／会话字段迁移 |
+| [Agent Auth](/docs/plugins/agent-auth)：代理代表用户调用受限能力 | `@better-auth/agent-auth` | `@better-auth/agent-auth` → `agentAuth` | `@better-auth/agent-auth/client` → `agentAuthClient` | 能力定义、委托与同意流程、受保护路由的验证；表迁移 |
+
+组织和管理后台的权限辅助函数继续从原生的 `better-auth/plugins/access`、`better-auth/plugins/admin/access` 或 `better-auth/plugins/organization/access` 导入。前端隐藏按钮只能改善界面，业务 API 仍需验证当前用户及其权限。
+
+## 企业与协议集成
+
+| 插件／用途 | 安装包 | 服务端入口与名称 | 客户端入口与名称 | 额外配置 |
+| --- | --- | --- | --- | --- |
+| [SSO](/docs/plugins/sso)：接入企业 OIDC／SAML 身份源 | `@better-auth/sso` | `@better-auth/sso` → `sso` | `@better-auth/sso/client` → `ssoClient` | IdP 元数据、凭证、域名与回调；SSO 表迁移 |
+| [OAuth Provider](/docs/plugins/oauth-provider)：让你的服务成为 OAuth／OIDC 身份源 | `@better-auth/oauth-provider` | `@better-auth/oauth-provider` → `oauthProvider`，同时启用内置 `jwt` | `@better-auth/oauth-provider/client` → `oauthProviderClient` | 登录／授权页面、scopes、客户端注册与授权、发现路由；表迁移 |
+| [CIMD](/docs/plugins/cimd)：通过 HTTPS 元数据识别 OAuth 客户端 | `@better-auth/cimd`，另需 OAuth Provider 或 MCP | `@better-auth/cimd` → `cimd` | — | 必填安全的 `fetchClientMetadataResource`；Node 可用 `@better-auth/cimd/node` 实现；其他运行时需等价网络边界 |
+| [MCP](/docs/plugins/mcp)：给 MCP 客户端提供 OAuth 授权与资源验证 | `@better-auth/mcp` | `@better-auth/mcp` → `mcp`，同时启用内置 `jwt` | —，MCP 客户端使用协议发现 | resource、scopes、登录／授权页面、MCP 协议路由；需 CIMD 时另装相应包；表迁移 |
+| [SCIM](/docs/plugins/scim)：同步企业目录用户与组 | `@better-auth/scim` | `@better-auth/scim` → `scim` | —，由企业目录调用 SCIM API | connections、目录 bearer 凭证、支持交互事务的适配器；表迁移；见[参考](/docs/plugins/scim/reference) |
+
+OAuth Provider 的资源服务器客户端从 `@better-auth/oauth-provider/resource-client` 导入 `oauthProviderResourceClient`，用于接收 token 的 API。`mcp()` 已包含 OAuth Provider，不要再重复注册 `oauthProvider()`。SCIM 负责目录同步，仍需单独配置用户登录方式。
+
+## 支付
+
+下列方案是可选的支付集成。快速接入示例只启用 Stripe 个人订阅，其他方案按各自文档接入。
+
+| 插件／用途 | 安装包 | 服务端入口与名称 | 客户端入口与名称 | 额外配置 |
+| --- | --- | --- | --- | --- |
+| [Stripe](/docs/plugins/stripe)：客户、订阅、账单门户 | 官方独立包 `@better-auth/stripe`、`stripe` | `@app/auth-sdk/stripe` → `stripe` | `@app/auth-sdk/stripe/client` → `stripeClient` | secret key、webhook secret、月／年 price ID、Billing Portal；订阅表迁移；见[中文步骤](/docs/guides/sdk-quickstart-zh#开启-stripe-个人订阅) |
+| [Polar](/docs/plugins/polar)：结账、门户、用量和 webhook | 外部 `@polar-sh/better-auth`、`@polar-sh/sdk` | `@polar-sh/better-auth` → `polar`，按需组合 `checkout`／`portal`／`usage`／`webhooks` | `@polar-sh/better-auth/client` → `polarClient` | access token、产品 ID、环境、webhook secret |
+| [Autumn](/docs/plugins/autumn)：套餐、额度和用量 | 外部 `autumn-js` | `autumn-js/better-auth` → `autumn` | `autumn-js/react` → `AutumnProvider`、`useCustomer` | `AUTUMN_SECRET_KEY`、Autumn 产品／功能；使用其 React API |
+| [Dodo Payments](/docs/plugins/dodopayments)：结账、门户和 webhook | 外部 `@dodopayments/better-auth`、`dodopayments`、`zod` | `@dodopayments/better-auth` → `dodopayments` 及所需子插件 | `@dodopayments/better-auth` → `dodopaymentsClient` | API key、环境、产品 ID、webhook key |
+| [Creem](/docs/plugins/creem)：结账、订阅、交易与门户 | 外部 `@creem_io/better-auth` | `@creem_io/better-auth` → `creem` | `@creem_io/better-auth/client` → `creemClient` | API key、testMode、产品 ID、webhook secret；表迁移 |
+| [Chargebee](/docs/plugins/chargebee)：客户与订阅管理 | 外部 `@chargebee/better-auth`、`chargebee` | `@chargebee/better-auth` → `chargebee` | `@chargebee/better-auth/client` → `chargebeeClient` | site、API key、套餐、webhook Basic Auth 凭证；表迁移 |
+| [Commet](/docs/plugins/commet)：订阅、权益、用量与席位 | 外部 `@commet/better-auth`、`@commet/node` | `@commet/better-auth` → `commet` 及所需子插件 | `@commet/better-auth/client` → `commetClient` | API key、选用的门户／订阅／用量模块及 webhook 配置 |
+
+## 辅助工具
+
+| 插件／用途 | 安装包 | 服务端入口与名称 | 客户端入口与名称 | 额外配置 |
+| --- | --- | --- | --- | --- |
+| [多会话](/docs/plugins/multi-session)：同一浏览器切换账户 | 内置 | 内置 `multiSession` | 内置 `multiSessionClient` | 会话数量策略与切换界面 |
+| [上次登录方式](/docs/plugins/last-login-method)：提示用户上次用什么登录 | 内置 | 内置 `lastLoginMethod` | 内置 `lastLoginMethodClient` | 可选数据库持久化；开启时迁移字段 |
+| [OAuth 代理](/docs/plugins/oauth-proxy)：处理预览部署的 OAuth 回调 | 内置 | 内置 `oAuthProxy` | — | productionURL、可信 origin、OAuth 回调配置 |
+| [OpenAPI](/docs/plugins/open-api)：生成 API schema 与参考页面 | 内置 | 内置 `openAPI` | — | 文档页面路径与访问策略 |
+| [测试辅助](/docs/plugins/test-utils)：构造测试用户和会话 | 内置 | 内置 `testUtils` | — | 只注册在独立测试实例中；按需捕获 OTP |
+| [自定义会话](/docs/concepts/session-management#customizing-session-response)：扩展会话返回内容 | 内置 | 内置 `customSession` | 内置 `customSessionClient` | 服务端回调；客户端用 `customSessionClient<typeof auth>()` 推导类型 |
+| [i18n](/docs/plugins/i18n)：翻译错误消息 | `@better-auth/i18n` | `@better-auth/i18n` → `i18n`、`locales` | — | 默认语言、语言检测方式与翻译字典 |
+| [Dub](/docs/plugins/dub)：注册／转化归因 | 外部 `@dub/better-auth`、`dub` | `@dub/better-auth` → `dubAnalytics` | `@dub/better-auth/client` → `dubAnalyticsClient` | Dub 凭证、工作区；OAuth 集成另需 client ID／secret |
+
+这份清单覆盖仓库插件文档中的独立插件条目，并补充概念文档里的自定义会话。更多第三方扩展列在[社区插件目录](/docs/plugins/community-plugins)：各项目的安装包、客户端入口和配置以其链接的维护者文档为准，SDK 不会自动安装或重新导出它们。需要自定义能力时，可以沿用[创建插件指南](/docs/guides/your-first-plugin)，无需修改 SDK。

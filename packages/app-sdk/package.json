@@ -1,0 +1,128 @@
+{
+  "name": "@app/auth-sdk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Application SDK entry points for Better Auth with Chinese integration guides",
+  "type": "module",
+  "license": "MIT",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "examples/nextjs",
+    "!examples/nextjs/.next",
+    "!examples/nextjs/next-env.d.ts",
+    "!examples/nextjs/**/*.test.ts",
+    "!examples/nextjs/**/*.tsbuildinfo",
+    "!examples/nextjs/.env*",
+    "examples/nextjs/.env.example"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "test": "vitest",
+    "typecheck": "tsc --build tsconfig.json && tsc --project tsconfig.test.json --noEmit",
+    "typecheck:example": "tsc --project examples/nextjs/tsconfig.json --noEmit",
+    "build:example": "next build examples/nextjs --webpack",
+    "dev:example": "next dev examples/nextjs",
+    "lint:package": "publint run --strict --pack false"
+  },
+  "exports": {
+    "./server": {
+      "dev-source": "./src/server.ts",
+      "types": "./dist/server.d.mts",
+      "default": "./dist/server.mjs"
+    },
+    "./react": {
+      "dev-source": "./src/react.ts",
+      "types": "./dist/react.d.mts",
+      "default": "./dist/react.mjs"
+    },
+    "./next-js": {
+      "dev-source": "./src/next-js.ts",
+      "types": "./dist/next-js.d.mts",
+      "default": "./dist/next-js.mjs"
+    },
+    "./plugins": {
+      "dev-source": "./src/plugins.ts",
+      "types": "./dist/plugins.d.mts",
+      "default": "./dist/plugins.mjs"
+    },
+    "./client/plugins": {
+      "dev-source": "./src/client/plugins.ts",
+      "types": "./dist/client/plugins.d.mts",
+      "default": "./dist/client/plugins.mjs"
+    },
+    "./stripe": {
+      "dev-source": "./src/stripe.ts",
+      "types": "./dist/stripe.d.mts",
+      "default": "./dist/stripe.mjs"
+    },
+    "./stripe/client": {
+      "dev-source": "./src/stripe/client.ts",
+      "types": "./dist/stripe/client.d.mts",
+      "default": "./dist/stripe/client.mjs"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "server": [
+        "./dist/server.d.mts"
+      ],
+      "react": [
+        "./dist/react.d.mts"
+      ],
+      "next-js": [
+        "./dist/next-js.d.mts"
+      ],
+      "plugins": [
+        "./dist/plugins.d.mts"
+      ],
+      "client/plugins": [
+        "./dist/client/plugins.d.mts"
+      ],
+      "stripe": [
+        "./dist/stripe.d.mts"
+      ],
+      "stripe/client": [
+        "./dist/stripe/client.d.mts"
+      ]
+    }
+  },
+  "devDependencies": {
+    "@better-auth/core": "workspace:*",
+    "@better-auth/stripe": "workspace:*",
+    "@types/pg": "^8.20.0",
+    "@types/react": "catalog:react19",
+    "@types/react-dom": "catalog:react19",
+    "better-auth": "workspace:*",
+    "next": "^16.3.4",
+    "pg": "^8.21.0",
+    "react": "catalog:react19",
+    "react-dom": "catalog:react19",
+    "stripe": "^22.0.1",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:vitest"
+  },
+  "peerDependencies": {
+    "better-auth": "workspace:^",
+    "@better-auth/stripe": "workspace:^",
+    "next": "^14 || ^15 || ^16",
+    "react": "^18 || ^19",
+    "stripe": "^18 || ^19 || ^20 || ^21 || ^22"
+  },
+  "peerDependenciesMeta": {
+    "@better-auth/stripe": {
+      "optional": true
+    },
+    "next": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    },
+    "stripe": {
+      "optional": true
+    }
+  }
+}

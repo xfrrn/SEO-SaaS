@@ -1,0 +1,26 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "composite": false,
+    "declaration": false,
+    "emitDeclarationOnly": false,
+    "noEmit": true,
+    "rootDir": "..",
+    "outDir": "${configDir}/node_modules/.cache/ts/test-out",
+    "tsBuildInfoFile": "${configDir}/node_modules/.cache/ts/test-tsbuildinfo"
+  },
+  "include": [
+    "./test",
+    "./src",
+    "../stripe/test/_fixtures.ts",
+    "../stripe/test/_factories.ts"
+  ],
+  "references": [
+    {
+      "path": "../better-auth/tsconfig.json"
+    },
+    {
+      "path": "../stripe/tsconfig.json"
+    }
+  ]
+}

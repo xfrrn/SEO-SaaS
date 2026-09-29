@@ -2,6 +2,8 @@
   "title": "Guides",
   "icon": "guides",
   "pages": [
+    "sdk-quickstart-zh",
+    "sdk-plugins-zh",
     "your-first-plugin",
     "create-a-db-adapter",
     "browser-extension-guide",
