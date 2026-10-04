@@ -7,6 +7,8 @@ description: 将认证与可选 Stripe 个人订阅接入现有 Next.js／React 
 
 默认示例使用 Next.js App Router、React、PostgreSQL 和邮箱密码登录。Stripe 单独开启；只接入认证时不需要支付密钥。可复制的源码在仓库的 `packages/app-sdk/examples/nextjs/`，插件选择见 [SDK 插件分类手册](/docs/guides/sdk-plugins-zh)。
 
+需要 PayPal.cn 全球收单时，按 [PayPal 中文接入](/docs/guides/sdk-paypal-zh)添加一次性付款。独立入口 `@app/auth-sdk/paypal` 提供服务端订单、收款确认和回调验签，配套 `paypal/` 模板保存订单并检查付费权限。
+
 ## 安装
 
 SDK 尚未发布到公共包仓库。先在 Better Auth 仓库根目录构建，再生成本地安装包：

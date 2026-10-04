@@ -52,6 +52,11 @@
       "types": "./dist/client/plugins.d.mts",
       "default": "./dist/client/plugins.mjs"
     },
+    "./paypal": {
+      "dev-source": "./src/paypal.ts",
+      "types": "./dist/paypal.d.mts",
+      "default": "./dist/paypal.mjs"
+    },
     "./stripe": {
       "dev-source": "./src/stripe.ts",
       "types": "./dist/stripe.d.mts",
@@ -79,6 +84,9 @@
       ],
       "client/plugins": [
         "./dist/client/plugins.d.mts"
+      ],
+      "paypal": [
+        "./dist/paypal.d.mts"
       ],
       "stripe": [
         "./dist/stripe.d.mts"

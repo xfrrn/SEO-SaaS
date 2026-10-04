@@ -22,6 +22,12 @@ Stripe webhook 地址为 `/api/auth/stripe/webhook`；本地调试可运行 `str
 
 `/api/premium` 演示服务端付费授权：传入请求头读取登录用户和订阅，未登录返回 401，无有效个人订阅返回 403。返回成功页面和客户端显示的状态都不作为权限凭证。
 
+## 开启 PayPal 一次性付款
+
+将 `paypal/` 内的 `app/`、`lib/` 合并到应用根目录（或 `src/`），保留基础认证配置。填写 `.env.example` 中的 PayPal 变量，在同一 PostgreSQL 数据库执行 `paypal/migrations/001_paypal.sql`；Better Auth CLI 不会创建这些支付业务表。登录后访问 `/paypal`，默认演示商品价格为 10.00 USD，修改服务端商品配置后再上线。
+
+配置 webhook 到 `/api/paypal/webhook`，使用真实沙箱交易验证到账和退款。完整配置、事件列表、接口与上线检查见 [PayPal 中文接入手册](../../../../docs/content/docs/guides/sdk-paypal-zh.mdx)。
+
 ## 在本仓库验证
 
 先构建 SDK 及其依赖，然后执行：

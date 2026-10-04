@@ -91,7 +91,7 @@ OAuth Provider 的资源服务器客户端从 `@better-auth/oauth-provider/resou
 
 ## 支付
 
-下列方案是可选的支付集成。快速接入示例只启用 Stripe 个人订阅，其他方案按各自文档接入。
+下列方案是可选的支付集成。快速接入示例提供 Stripe 个人订阅；另有 [PayPal 一次性付款](/docs/guides/sdk-paypal-zh)模板，使用服务端入口 `@app/auth-sdk/paypal`，无需额外支付依赖。PayPal 支付客户端不注册为 Better Auth 插件；其他方案按各自文档接入。
 
 | 插件／用途 | 安装包 | 服务端入口与名称 | 客户端入口与名称 | 额外配置 |
 | --- | --- | --- | --- | --- |

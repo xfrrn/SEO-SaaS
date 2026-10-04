@@ -1,6 +1,6 @@
 # 认证与支付 SDK
 
-`@app/auth-sdk` 将 Better Auth 原生 API 按服务端、React、Next.js、插件和 Stripe 分开导出。登录方法、返回值、错误和 TypeScript 推导保持原样；Stripe 按需启用。
+`@app/auth-sdk` 将 Better Auth 原生 API 按服务端、React、Next.js、插件和 Stripe 分开导出。登录方法、返回值、错误和 TypeScript 推导保持原样；Stripe 按需启用。另提供独立的 PayPal 一次性付款客户端及示例。
 
 先读 [中文快速接入手册（仓库源码）](../../docs/content/docs/guides/sdk-quickstart-zh.mdx)，再按 [插件分类手册（仓库源码）](../../docs/content/docs/guides/sdk-plugins-zh.mdx) 选择功能。这两个相对链接用于源码仓库；文档站对应 `/docs/guides/sdk-quickstart-zh` 和 `/docs/guides/sdk-plugins-zh`。
 
@@ -34,6 +34,7 @@ pnpm add -D @types/pg
 | `@app/auth-sdk/client/plugins` | 内置客户端插件 |
 | `@app/auth-sdk/stripe` | 可选 Stripe 服务端插件 |
 | `@app/auth-sdk/stripe/client` | 可选 `stripeClient` |
+| `@app/auth-sdk/paypal` | PayPal 服务端订单、收款确认与 webhook 验签 |
 
 ```ts
 import { createAuthClient } from "@app/auth-sdk/react";
@@ -59,3 +60,5 @@ export const authClient = createAuthClient();
 5. 需要支付时，将 `billing/` 内的文件按其相对位置合并进项目，补齐 Stripe 环境变量，再次迁移并配置 `/api/auth/stripe/webhook`。`billing/app/billing/page.tsx` 提供订阅操作，`billing/app/api/premium/route.ts` 示范服务端权益检查。
 
 完整的配置来源、月付／年付、套餐切换、取消／恢复、账单门户和旧 SDK 调用对照都在中文快速接入手册中。示例采用 Node.js + `pg.Pool`；支付授权读取服务端订阅状态。生产用户、密码与旧登录态不会自动迁移。
+
+PayPal.cn 全球收单接入见 [PayPal 中文手册](../../docs/content/docs/guides/sdk-paypal-zh.mdx)。将 `examples/nextjs/paypal/` 内的文件合并进应用，填写 PayPal 环境变量并执行独立 SQL 迁移，登录后访问 `/paypal`。默认沙箱，示例演示价格为 10.00 USD；支持一次性付款与退款状态同步，不含自动续费。
