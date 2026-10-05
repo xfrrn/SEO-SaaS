@@ -155,6 +155,9 @@ importers:
 
   packages/app-sdk:
     dependencies:
+      '@app/credits':
+        specifier: workspace:^
+        version: link:../credits
       '@app/paypal':
         specifier: workspace:^
         version: link:../paypal
@@ -405,6 +408,31 @@ importers:
       tsdown:
         specifier: 'catalog:'
         version: 0.21.10(@arethetypeswrong/core@0.18.3)(oxc-resolver@11.21.3)(publint@0.3.21)(typescript@6.0.3)
+
+  packages/credits:
+    dependencies:
+      zod:
+        specifier: 'catalog:'
+        version: 4.5.4
+    devDependencies:
+      '@better-auth/core':
+        specifier: workspace:*
+        version: link:../core
+      better-auth:
+        specifier: workspace:*
+        version: link:../better-auth
+      better-call:
+        specifier: 'catalog:'
+        version: 1.4.0(zod@4.5.4)
+      tsdown:
+        specifier: 'catalog:'
+        version: 0.21.10(@arethetypeswrong/core@0.18.3)(oxc-resolver@11.21.3)(publint@0.3.21)(typescript@6.0.3)
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+      vitest:
+        specifier: catalog:vitest
+        version: 5.0.0(@opentelemetry/api@1.9.1)(@types/node@25.9.4)(@vitest/coverage-istanbul@5.0.0)(@vitest/ui@5.0.0)(happy-dom@20.8.9)(msw@2.14.6(@types/node@25.9.4)(typescript@6.0.3))(vite@6.4.3(@types/node@25.9.4)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.0))
 
   packages/electron:
     dependencies:

@@ -6,8 +6,9 @@ This is the Better Auth repository - a comprehensive authentication framework fo
 
 - `packages/better-auth` - Main authentication library
 - `packages/core` - Shared core types and utilities
-- `packages/app-sdk` - Application SDK entry points, re-exporting authentication, subscription, and payment packages
+- `packages/app-sdk` - Application SDK entry points, re-exporting authentication, subscription, credits, and payment packages
 - `packages/subscription` - Provider-neutral subscription plugin (`@app/subscription`), shared schema, types, and tests
+- `packages/credits` - Provider-neutral credits balance and append-only ledger plugin (`@app/credits`) and tests
 - `packages/paypal` - Standalone PayPal client (`@app/paypal`) and tests
 - `packages/*` - Database adapters, plugins, integrations
 - `test/` - Shared test workspace
@@ -68,7 +69,7 @@ When a flow must synthesize an email, use `createPlaceholderEmail` with a stable
 ## Testing
 
 - SDK and native package tests use Vitest; packaging tests use `node:test`
-- `pnpm test:sdk` runs the app SDK, standalone PayPal, and subscription package tests
+- `pnpm test:sdk` runs the app SDK, standalone PayPal, subscription, and credits package tests
 - Use `getTestInstance()` from `better-auth/test`. It returns `{ client, auth, sessionSetter, ... }`
 - Pass client plugins via `clientOptions.plugins`
 - NEVER create separate clients with `createAuthClient()` in tests

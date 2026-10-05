@@ -17,6 +17,16 @@
     "lint:package": "publint run --strict --pack false"
   },
   "exports": {
+    "./credits": {
+      "dev-source": "./src/credits.ts",
+      "types": "./dist/credits.d.mts",
+      "default": "./dist/credits.mjs"
+    },
+    "./credits/client": {
+      "dev-source": "./src/credits/client.ts",
+      "types": "./dist/credits/client.d.mts",
+      "default": "./dist/credits/client.mjs"
+    },
     "./subscription": {
       "dev-source": "./src/subscription.ts",
       "types": "./dist/subscription.d.mts",
@@ -70,6 +80,12 @@
   },
   "typesVersions": {
     "*": {
+      "credits": [
+        "./dist/credits.d.mts"
+      ],
+      "credits/client": [
+        "./dist/credits/client.d.mts"
+      ],
       "subscription": [
         "./dist/subscription.d.mts"
       ],
@@ -103,6 +119,7 @@
     }
   },
   "dependencies": {
+    "@app/credits": "workspace:^",
     "@app/paypal": "workspace:^",
     "@app/subscription": "workspace:^"
   },

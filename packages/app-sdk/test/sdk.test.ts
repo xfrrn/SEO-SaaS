@@ -1,4 +1,6 @@
 import * as sdkClientPlugins from "@app/auth-sdk/client/plugins";
+import * as sdkCredits from "@app/auth-sdk/credits";
+import * as sdkCreditsClient from "@app/auth-sdk/credits/client";
 import * as sdkNextJS from "@app/auth-sdk/next-js";
 import * as sdkPayPal from "@app/auth-sdk/paypal";
 import * as sdkPlugins from "@app/auth-sdk/plugins";
@@ -8,6 +10,8 @@ import * as sdkStripe from "@app/auth-sdk/stripe";
 import * as sdkStripeClient from "@app/auth-sdk/stripe/client";
 import * as sdkSubscription from "@app/auth-sdk/subscription";
 import * as sdkSubscriptionClient from "@app/auth-sdk/subscription/client";
+import * as nativeCredits from "@app/credits";
+import * as nativeCreditsClient from "@app/credits/client";
 import * as nativePayPal from "@app/paypal";
 import * as nativeSubscription from "@app/subscription";
 import * as nativeSubscriptionClient from "@app/subscription/client";
@@ -29,6 +33,8 @@ describe("SDK native compatibility", () => {
 			[sdkNextJS, nativeNextJS],
 			[sdkPlugins, nativePlugins],
 			[sdkClientPlugins, nativeClientPlugins],
+			[sdkCredits, nativeCredits],
+			[sdkCreditsClient, nativeCreditsClient],
 			[sdkStripe, nativeStripe],
 			[sdkStripeClient, nativeStripeClient],
 			[sdkPayPal, nativePayPal],
@@ -103,6 +109,7 @@ describe("SDK native compatibility", () => {
 		expectTypeOf<UsernameClient["signIn"]["username"]>().toBeFunction();
 		expectTypeOf<"username">().not.toExtend<keyof BasicClient["signIn"]>();
 		expectTypeOf<"subscription">().not.toExtend<keyof BasicClient>();
+		expectTypeOf<"credits">().not.toExtend<keyof BasicClient>();
 		expectTypeOf<Auth["api"]["getSession"]>().toEqualTypeOf<
 			nativeServer.Auth<{}>["api"]["getSession"]
 		>();

@@ -1,6 +1,6 @@
 # 认证与支付 SDK
 
-`@app/auth-sdk` 统一导出 Better Auth 服务端、客户端插件、React、Next.js、通用订阅、Stripe 和 PayPal 功能，保持各功能包的参数、返回值和类型推导。
+`@app/auth-sdk` 统一导出 Better Auth 服务端、客户端插件、React、Next.js、通用订阅、credits、Stripe 和 PayPal 功能，保持各功能包的参数、返回值和类型推导。
 
 ## 安装
 
@@ -25,6 +25,8 @@ pnpm add ./vendor/auth-sdk.tgz
 | `@app/auth-sdk/next-js` | `toNextJsHandler`、`nextCookies` |
 | `@app/auth-sdk/subscription` | `subscription` 通用套餐与订阅插件 |
 | `@app/auth-sdk/subscription/client` | `subscriptionClient` |
+| `@app/auth-sdk/credits` | `credits` 额度与流水插件 |
+| `@app/auth-sdk/credits/client` | `creditsClient` |
 | `@app/auth-sdk/stripe` | Stripe 服务端插件 |
 | `@app/auth-sdk/stripe/client` | `stripeClient` |
 | `@app/auth-sdk/paypal` | PayPal 订单、收款确认与 webhook 验签 |
@@ -47,6 +49,19 @@ PayPal.cn 全球收单的服务端客户端实现在独立的 `@app/paypal` 包�
 
 首次启用需迁移数据库；与 Stripe 共用订阅表时，自定义表名及字段映射必须一致。旧 Stripe 记录需有有效起止日期才能出现在通用权益查询中；迁移前备份，并核对、补齐渠道标识和通用订阅 ID。Stripe 的价格配置和支付 API 继续保留。
 
+## Credits 额度
+
+`@app/auth-sdk/credits` 转发独立包 `@app/credits`。服务端启用 `credits()`，客户端启用从 `@app/auth-sdk/credits/client` 导入的 `creditsClient()`。先迁移数据库；插件依赖 SQL 唯一约束保证并发写入和重复请求不重复记账，支持 PostgreSQL/Kysely，不支持内存适配器。
+
+- `auth.api.grantCredits({ body })`、`auth.api.consumeCredits({ body })`：仅供受信服务端发放和扣减，没有 HTTP 写入口。`body` 包含 `referenceId`、正安全整数 `amount`、`idempotencyKey` 和可选 `reason`；余额不足时拒绝扣减。
+- `auth.api.getCreditsBalance({ headers, query? })`：返回 `{ referenceId, balance }`，初始余额为 0。
+- `auth.api.listCreditsLedger({ headers, query? })`：返回 `{ entries, nextCursor }`，支持 `cursor`、`limit` 分页。两种查询默认只访问当前用户；其他 `referenceId` 需要配置 `authorizeReference`。
+- 浏览器只读入口为 `client.credits.balance()` 和 `client.credits.ledger({ query: { limit: 20 } })`。
+
+写入返回 `{ entry, applied }`。同账户、同 key 的重复操作不重复执行；重试需保持操作、数量和原因一致。超时后重用原 key；`applied: false` 返回原流水及当时余额，当前余额需重新查询。流水只追加，不应直接修改或删除。
+
+额度默认永久累积。包月额度可由业务端在每期付款核验后发放，使用稳定的账单或业务周期 key；套餐 `limits` 不会自动发放额度。插件不执行自动扣款、定时发放或到期清零。额度操作与外部业务不是同一事务，失败任务可用新的稳定 key 发放补偿。示例见[根目录说明](../../README.md#credits-额度)。
+
 ## 修改与测试
 
 在源码仓库根目录运行：
@@ -60,6 +75,6 @@ pnpm typecheck
 pnpm pack:sdk
 ```
 
-PayPal 实现和测试分别位于 `packages/paypal/src/index.ts`、`packages/paypal/test/paypal.test.ts`；通用订阅实现在 `packages/subscription/src`。`pnpm test:sdk` 同时运行 SDK 入口、独立 PayPal 包和通用订阅包的测试。完整 SDK 安装包会包含这两个独立包。
+PayPal 实现和测试分别位于 `packages/paypal/src/index.ts`、`packages/paypal/test/paypal.test.ts`；通用订阅实现在 `packages/subscription/src`，credits 实现在 `packages/credits/src`。`pnpm test:sdk` 同时运行 SDK 入口、独立 PayPal、通用订阅和 credits 包的测试。完整 SDK 安装包会包含这些独立包。
 
 请用根目录 `pack:sdk` 生成完整安装包；直接打包本目录只包含入口层。其他独立插件仍保留在工作区中，可按需构建和接入。

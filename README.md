@@ -17,8 +17,9 @@ pnpm typecheck
 
 | 路径 | 用途 |
 | --- | --- |
-| `packages/app-sdk` | 应用接入入口，统一导出认证、订阅及支付功能 |
+| `packages/app-sdk` | 应用接入入口，统一导出认证、订阅、credits 及支付功能 |
 | `packages/subscription` | 通用套餐、订阅记录和权益查询，包名为 `@app/subscription` |
+| `packages/credits` | 独立积分余额、发放、扣减和流水插件，包名为 `@app/credits` |
 | `packages/paypal` | 独立 PayPal 客户端及其测试，包名为 `@app/paypal` |
 | `packages/better-auth` | 认证服务、客户端和内置插件 |
 | `packages/core` | 公共类型和底层能力 |
@@ -34,7 +35,7 @@ pnpm typecheck
 pnpm pack:sdk
 ```
 
-产物为 **`dist/auth-sdk.tgz`**。其中包含本仓库构建的认证核心、Kysely/内存适配器、通用订阅、Stripe 及 PayPal 包，保留你的本地修改。复制到使用方项目的 `vendor/` 后安装：
+产物为 **`dist/auth-sdk.tgz`**。其中包含本仓库构建的认证核心、Kysely/内存适配器、通用订阅、credits、Stripe 及 PayPal 包，保留你的本地修改。复制到使用方项目的 `vendor/` 后安装：
 
 ```bash
 pnpm add ./vendor/auth-sdk.tgz
@@ -53,6 +54,8 @@ SSO、Passkey、SCIM 等独立包的源码和测试仍保留，主 SDK 的打包
 | `@app/auth-sdk/next-js` | `toNextJsHandler`、`nextCookies` |
 | `@app/auth-sdk/subscription` | 通用订阅服务端插件 `subscription` |
 | `@app/auth-sdk/subscription/client` | 通用订阅客户端插件 `subscriptionClient` |
+| `@app/auth-sdk/credits` | credits 服务端插件 `credits` |
+| `@app/auth-sdk/credits/client` | credits 客户端插件 `creditsClient` |
 | `@app/auth-sdk/stripe` | Stripe 服务端插件 |
 | `@app/auth-sdk/stripe/client` | Stripe 客户端插件 |
 | `@app/auth-sdk/paypal` | PayPal 订单、收款和 webhook 验签 |
@@ -176,6 +179,55 @@ const billingPlugins = [
 
 启用新插件前，需要按最终认证配置执行标准数据库迁移。通用订阅与 Stripe 可共用 `subscription` 表；若自定义表名或字段映射，两个插件必须使用相同配置，否则初始化会拒绝。Stripe 按渠道隔离处理记录，仍兼容未设置 `provider` 的旧 Stripe 数据。旧记录要参与通用权益查询，必须有有效的起止日期；建议先备份，再依据真实 Stripe 订阅核对并回填 `provider`、通用订阅 ID 及必要日期。
 
+## Credits 额度
+
+`packages/credits` 独立管理整数额度，可用于按次调用、任务消耗或套餐赠送，不依赖订阅或支付渠道。服务端启用插件，并按最终认证配置迁移数据库：
+
+```ts
+import { credits } from "@app/auth-sdk/credits";
+
+// betterAuth({ ...其他认证配置, plugins: [credits()] })
+```
+
+余额初始为 0。发放与扣减仅供受信服务端调用，没有 HTTP 写入口；业务端负责验证调用者、订单和使用权限。`amount` 必须是正的安全整数；扣减超过余额会失败。
+
+```ts
+// 在服务端确认付款并核对订单归属、金额和币种后发放。
+await auth.api.grantCredits({
+  body: {
+    referenceId: user.id,
+    amount: 1000,
+    idempotencyKey: `stripe:invoice:${paidInvoice.id}:credits`,
+    reason: "每月套餐额度",
+  },
+});
+
+await auth.api.consumeCredits({
+  body: {
+    referenceId: user.id,
+    amount: 10,
+    idempotencyKey: `job:${job.id}:consume`,
+    reason: "生成任务",
+  },
+});
+
+const { balance } = await auth.api.getCreditsBalance({
+  headers: request.headers,
+});
+const { entries, nextCursor } = await auth.api.listCreditsLedger({
+  headers: request.headers,
+  query: { limit: 20 }, // 下一页传 cursor: nextCursor
+});
+```
+
+写入返回 `{ entry, applied }`。同一账户的同一个 `idempotencyKey` 只能记录一次；重试必须保持操作、数量和原因一致，否则报冲突。超时或结果不确定时应使用原 key 重试。`applied: false` 返回原流水，里面的余额是该笔操作完成时的余额；当前余额请重新查询。
+
+查询默认只允许当前用户；查询组织等其他账户时传 `query: { referenceId }`，并配置 `credits({ authorizeReference })` 校验权限。浏览器可在客户端配置中加入从 `@app/auth-sdk/credits/client` 导入的 `creditsClient()`，再调用 `client.credits.balance()` 或 `client.credits.ledger({ query: { limit: 20 } })`。
+
+额度默认永久有效并累积。包月套餐可在每期付款确认后发放，以已验证账单或业务周期的稳定 ID 作为 key；套餐中的 `limits.monthlyCredits` 只是自定义配置，不会自动发放。自动扣款、定时发放、到期清零和结转规则由业务层按需接入。
+
+流水只追加，余额随流水保存；SQL 唯一约束负责串行化同一账户的并发写入并避免重复记账。插件要求数据库迁移包含这些约束，支持本项目的 PostgreSQL/Kysely 接入，不支持内存适配器。不要直接修改或删除流水。额度操作不与外部业务任务共同提交；任务失败需要返还时，用新的稳定 key 调用 `grantCredits` 记录补偿。
+
 ## PayPal.cn 接入
 
 服务端实现位于独立包 [packages/paypal/src/index.ts](./packages/paypal/src/index.ts)，测试位于 [packages/paypal/test/paypal.test.ts](./packages/paypal/test/paypal.test.ts)。`app-sdk` 负责转发导出，业务项目的导入方式保持不变：
@@ -189,7 +241,7 @@ import { createPayPalClient } from "@app/auth-sdk/paypal";
 ## 测试
 
 ```bash
-# SDK 入口、认证流程、Stripe、通用订阅和独立 PayPal 包测试
+# SDK 入口、认证流程、Stripe、通用订阅、credits 和独立 PayPal 包测试
 pnpm test:sdk
 
 # 打包依赖、导出条件和缺失构建产物检查

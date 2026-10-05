@@ -3,6 +3,9 @@
   "include": ["./*.ts", "./*.js"],
   "references": [
     {
+      "path": "./packages/credits/tsconfig.json"
+    },
+    {
       "path": "./packages/subscription/tsconfig.json"
     },
     {
