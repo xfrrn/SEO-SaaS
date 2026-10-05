@@ -9,20 +9,15 @@ import { createBetterAuth } from "./base";
  * @example
  * ```ts
  * import { betterAuth } from "better-auth";
+ * import { Pool } from "pg";
  *
  * const auth = betterAuth({
- * 	database: new PostgresDialect({ connection: process.env.DATABASE_URL }),
+ * 	database: new Pool({ connectionString: process.env.DATABASE_URL }),
  * });
  * ```
  *
- * For minimal mode (without Kysely), import from `better-auth/minimal` instead
- * @example
- * ```ts
- * import { betterAuth } from "better-auth/minimal";
- *
- * const auth = betterAuth({
- *	  database: drizzleAdapter(db, { provider: "pg" }),
- * });
+ * For minimal mode with a custom database adapter (without Kysely), import from
+ * `better-auth/minimal` instead.
  */
 export const betterAuth = <Options extends BetterAuthOptions>(
 	options: Options & {},

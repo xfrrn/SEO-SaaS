@@ -4,6 +4,8 @@ export default defineConfig({
 	dts: { build: true, incremental: true },
 	format: ["esm"],
 	entry: [
+		"./src/subscription.ts",
+		"./src/subscription/client.ts",
 		"./src/server.ts",
 		"./src/react.ts",
 		"./src/next-js.ts",

@@ -20,21 +20,6 @@ x-mysql-healthcheck: &mysql-healthcheck
     start_period: 30s
 
 services:
-  mongodb:
-    image: mongo:7.0.34@sha256:c1a84ab5d0c17deed1e0dba1d24bd7c76e5c7b281145fe536911939b1551754c
-    container_name: mongodb
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongodb_data:/data/db
-    healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 1s
-      timeout: 5s
-      retries: 10
-      start_period: 10s
-
-  # drizzle
   postgres:
     <<: *postgres-healthcheck
     image: postgres:latest
@@ -61,7 +46,6 @@ services:
     volumes:
       - postgres-kysely_data:/var/lib/postgresql
 
-  # Drizzle tests
   mysql:
     <<: *mysql-healthcheck
     image: mysql:latest
@@ -91,7 +75,6 @@ services:
       - mysql-kysely_data:/var/lib/mysql
 
 volumes:
-  mongodb_data:
   postgres_data:
   postgres-kysely_data:
   mysql_data:

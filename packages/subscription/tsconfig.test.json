@@ -9,24 +9,10 @@
     "outDir": "${configDir}/node_modules/.cache/ts/test-out",
     "tsBuildInfoFile": "${configDir}/node_modules/.cache/ts/test-tsbuildinfo"
   },
-  "include": [
-    "./test",
-    "./src",
-    "../stripe/test/_fixtures.ts",
-    "../stripe/test/_factories.ts"
-  ],
+  "include": ["./src", "./test"],
   "references": [
-    {
-      "path": "../subscription/tsconfig.json"
-    },
-    {
-      "path": "../paypal/tsconfig.json"
-    },
-    {
-      "path": "../better-auth/tsconfig.json"
-    },
-    {
-      "path": "../stripe/tsconfig.json"
-    }
+    { "path": "../core/tsconfig.json" },
+    { "path": "../better-auth/tsconfig.json" },
+    { "path": "../stripe/tsconfig.json" }
   ]
 }

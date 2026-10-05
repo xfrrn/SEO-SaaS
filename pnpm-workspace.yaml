@@ -85,15 +85,12 @@ catalogs:
 
 allowBuilds:
   '@parcel/watcher': true
-  '@prisma/client': true
-  '@prisma/engines': true
   '@swc/core': true
   '@tsparticles/engine': true
   better-sqlite3: true
   esbuild: true
   less: true
   msw: true
-  prisma: true
   protobufjs: true
   sharp: true
   workerd: true
@@ -115,11 +112,6 @@ packageExtensions:
     peerDependenciesMeta:
       zod:
         optional: true
-  # drizzle-kit has no drizzle-orm peer, so a monorepo can feed it the wrong version.
-  # https://github.com/drizzle-team/drizzle-orm/issues/5573
-  drizzle-kit:
-    peerDependencies:
-      drizzle-orm: '*'
 
 trustPolicy: no-downgrade
 

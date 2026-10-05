@@ -58,6 +58,7 @@
     }
   },
   "dependencies": {
+    "@app/subscription": "workspace:*",
     "defu": "^6.1.5",
     "zod": "catalog:"
   },

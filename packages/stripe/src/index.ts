@@ -21,7 +21,14 @@ import type {
 	Subscription,
 	WithStripeCustomerId,
 } from "./types";
-import { escapeStripeSearchValue, getPlans, isActiveOrTrialing } from "./utils";
+import {
+	escapeStripeSearchValue,
+	getPlans,
+	isActiveOrTrialing,
+	isStripeSubscription,
+	stripeSubscriptionData,
+	stripeSubscriptionWhere,
+} from "./utils";
 import { PACKAGE_VERSION } from "./version";
 
 declare module "@better-auth/core" {
@@ -203,20 +210,22 @@ export const stripe = <O extends StripeOptions>(options: O) => {
 						);
 						// Canceled subscriptions remain in the organization's history.
 						// Select a current subscription before checking its seat plan.
-						const dbSub = await ctx.adapter.findOne<Subscription>({
-							model: "subscription",
-							where: [
-								{
-									field: "referenceId",
-									value: data.organization.id,
-								},
-								{
-									field: "status",
-									operator: "in",
-									value: ["active", "trialing"],
-								},
-							],
-						});
+						const dbSub = await ctx.adapter
+							.findMany<Subscription>({
+								model: "subscription",
+								where: stripeSubscriptionWhere(ctx, [
+									{
+										field: "referenceId",
+										value: data.organization.id,
+									},
+									{
+										field: "status",
+										operator: "in",
+										value: ["active", "trialing"],
+									},
+								]),
+							})
+							.then((rows) => rows.find(isStripeSubscription));
 						if (
 							!dbSub?.stripeSubscriptionId ||
 							!isActiveOrTrialing(dbSub) ||
@@ -252,7 +261,10 @@ export const stripe = <O extends StripeOptions>(options: O) => {
 						});
 						await ctx.adapter.update({
 							model: "subscription",
-							update: { seats: memberCount },
+							update: {
+								...stripeSubscriptionData(ctx, dbSub),
+								seats: memberCount,
+							},
 							where: [{ field: "id", value: dbSub.id }],
 						});
 					} catch (e: any) {

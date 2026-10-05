@@ -1,13 +1,16 @@
+import { resolvePlans } from "@app/subscription/utils";
+import type { AuthContext } from "@better-auth/core";
+import type { Where } from "@better-auth/core/db/adapter";
 import type Stripe from "stripe";
 import type { StripeOptions, StripePlan, Subscription } from "./types";
+
+export { isActiveOrTrialing } from "@app/subscription/utils";
 
 export async function getPlans(
 	subscriptionOptions: StripeOptions["subscription"],
 ) {
 	if (subscriptionOptions?.enabled) {
-		return typeof subscriptionOptions.plans === "function"
-			? await subscriptionOptions.plans()
-			: subscriptionOptions.plans;
+		return resolvePlans(subscriptionOptions.plans);
 	}
 	throw new Error("Subscriptions are not enabled in the Stripe options.");
 }
@@ -18,13 +21,53 @@ export async function getPlanByName(options: StripeOptions, name: string) {
 	);
 }
 
-/**
- * Checks if a subscription is in an available state (active or trialing)
- */
-export function isActiveOrTrialing(
-	sub: Subscription | Stripe.Subscription,
+/** Recognize Stripe rows, including records created before provider tracking. */
+export function isStripeSubscription(
+	sub: Pick<Subscription, "provider">,
 ): boolean {
-	return sub.status === "active" || sub.status === "trialing";
+	return sub.provider == null || sub.provider === "stripe";
+}
+
+/** Scope provider reads before pagination, retaining legacy unmarked Stripe rows. */
+export function stripeSubscriptionWhere(
+	context: Pick<AuthContext, "tables">,
+	where: (Where & { connector?: "AND" })[],
+): Where[] {
+	if (!context.tables.subscription?.fields.provider) return where;
+	// OR clauses must precede the AND constraints: SQL groups them, while the
+	// memory adapter evaluates clauses in order.
+	return [
+		{ field: "provider", value: "stripe", connector: "OR" },
+		{ field: "provider", value: null, connector: "OR" },
+		...where,
+	];
+}
+
+/** Ignore another provider's row when resolving an explicit Stripe identifier. */
+export function onlyStripeSubscription<
+	T extends Pick<Subscription, "provider">,
+>(sub: T | null): T | null {
+	return sub && isStripeSubscription(sub) ? sub : null;
+}
+
+/** Add provider-neutral identifiers only when the subscription plugin owns them. */
+export function stripeSubscriptionData(
+	context: Pick<AuthContext, "tables">,
+	sub: Pick<Subscription, "stripeSubscriptionId" | "stripeCustomerId">,
+) {
+	if (!context.tables.subscription?.fields.provider) return {};
+	return {
+		provider: "stripe",
+		...(sub.stripeSubscriptionId
+			? {
+					providerSubscriptionId: sub.stripeSubscriptionId,
+					syncKey: JSON.stringify(["stripe", sub.stripeSubscriptionId]),
+				}
+			: {}),
+		...(sub.stripeCustomerId
+			? { providerCustomerId: sub.stripeCustomerId }
+			: {}),
+	};
 }
 
 /**

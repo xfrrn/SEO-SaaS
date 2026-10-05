@@ -8,8 +8,11 @@ import {
 	isActiveOrTrialing,
 	isPendingCancel,
 	isStripePendingCancel,
+	isStripeSubscription,
 	resolvePlanItem,
 	resolveQuantity,
+	stripeSubscriptionData,
+	stripeSubscriptionWhere,
 } from "./utils";
 
 /**
@@ -72,6 +75,13 @@ export async function onCheckoutSessionCompleted(
 				plan.seatPriceId,
 			);
 			if (referenceId && subscriptionId) {
+				const existingSubscription =
+					await ctx.context.adapter.findOne<Subscription>({
+						model: "subscription",
+						where: [{ field: "id", value: subscriptionId }],
+					});
+				if (existingSubscription && !isStripeSubscription(existingSubscription))
+					return;
 				const trial =
 					subscription.trial_start && subscription.trial_end
 						? {
@@ -83,6 +93,10 @@ export async function onCheckoutSessionCompleted(
 				let dbSubscription = await ctx.context.adapter.update<Subscription>({
 					model: "subscription",
 					update: {
+						...stripeSubscriptionData(ctx.context, {
+							stripeSubscriptionId: subscription.id,
+							stripeCustomerId: existingSubscription?.stripeCustomerId,
+						}),
 						...trial,
 						plan: plan.name.toLowerCase(),
 						status: subscription.status,
@@ -126,6 +140,7 @@ export async function onCheckoutSessionCompleted(
 						],
 					});
 				}
+				if (dbSubscription && !isStripeSubscription(dbSubscription)) return;
 				await options.subscription?.onSubscriptionComplete?.(
 					{
 						event,
@@ -239,6 +254,10 @@ export async function onSubscriptionCreated(
 		const newSubscription = await ctx.context.adapter.create<Subscription>({
 			model: "subscription",
 			data: {
+				...stripeSubscriptionData(ctx.context, {
+					stripeSubscriptionId: stripeSubscriptionCreated.id,
+					stripeCustomerId,
+				}),
 				...trial,
 				...(plan.limits ? { limits: plan.limits } : {}),
 				referenceId,
@@ -306,11 +325,17 @@ export async function onSubscriptionUpdated(
 						},
 					],
 		});
+		// Never fall back when metadata resolves to another provider's record.
+		if (subscription && !isStripeSubscription(subscription)) return;
 		if (!subscription) {
-			const subs = await ctx.context.adapter.findMany<Subscription>({
-				model: "subscription",
-				where: [{ field: "stripeCustomerId", value: customerId }],
-			});
+			const subs = await ctx.context.adapter
+				.findMany<Subscription>({
+					model: "subscription",
+					where: stripeSubscriptionWhere(ctx.context, [
+						{ field: "stripeCustomerId", value: customerId },
+					]),
+				})
+				.then((rows) => rows.filter(isStripeSubscription));
 			if (subs.length > 1) {
 				const activeSub = subs.find((sub: Subscription) =>
 					isActiveOrTrialing(sub),
@@ -326,6 +351,7 @@ export async function onSubscriptionUpdated(
 				subscription = subs[0]!;
 			}
 		}
+		if (!subscription) return;
 
 		const seats = plan
 			? resolveQuantity(
@@ -347,6 +373,10 @@ export async function onSubscriptionUpdated(
 		const subscriptionUpdated = await ctx.context.adapter.update<Subscription>({
 			model: "subscription",
 			update: {
+				...stripeSubscriptionData(ctx.context, {
+					stripeSubscriptionId: stripeSubscriptionUpdated.id,
+					stripeCustomerId: customerId,
+				}),
 				...trial,
 				...(plan
 					? {
@@ -454,7 +484,7 @@ export async function onSubscriptionDeleted(
 				},
 			],
 		});
-		if (subscription) {
+		if (subscription && isStripeSubscription(subscription)) {
 			const trial =
 				stripeSubscriptionDeleted.trial_start &&
 				stripeSubscriptionDeleted.trial_end
@@ -475,6 +505,7 @@ export async function onSubscriptionDeleted(
 						},
 					],
 					update: {
+						...stripeSubscriptionData(ctx.context, subscription),
 						...trial,
 						status: "canceled",
 						updatedAt: new Date(),

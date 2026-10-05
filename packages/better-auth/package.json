@@ -178,21 +178,6 @@
       "types": "./dist/db/get-migration.d.mts",
       "default": "./dist/db/get-migration.mjs"
     },
-    "./adapters/prisma": {
-      "dev-source": "./src/adapters/prisma-adapter/index.ts",
-      "types": "./dist/adapters/prisma-adapter/index.d.mts",
-      "default": "./dist/adapters/prisma-adapter/index.mjs"
-    },
-    "./adapters/drizzle": {
-      "dev-source": "./src/adapters/drizzle-adapter/index.ts",
-      "types": "./dist/adapters/drizzle-adapter/index.d.mts",
-      "default": "./dist/adapters/drizzle-adapter/index.mjs"
-    },
-    "./adapters/mongodb": {
-      "dev-source": "./src/adapters/mongodb-adapter/index.ts",
-      "types": "./dist/adapters/mongodb-adapter/index.d.mts",
-      "default": "./dist/adapters/mongodb-adapter/index.mjs"
-    },
     "./adapters/memory": {
       "dev-source": "./src/adapters/memory-adapter/index.ts",
       "types": "./dist/adapters/memory-adapter/index.d.mts",
@@ -392,15 +377,6 @@
       "adapters": [
         "./dist/adapters/index.d.mts"
       ],
-      "adapters/prisma": [
-        "./dist/adapters/prisma-adapter/index.d.mts"
-      ],
-      "adapters/drizzle": [
-        "./dist/adapters/drizzle-adapter/index.d.mts"
-      ],
-      "adapters/mongodb": [
-        "./dist/adapters/mongodb-adapter/index.d.mts"
-      ],
       "adapters/memory": [
         "./dist/adapters/memory-adapter/index.d.mts"
       ],
@@ -471,11 +447,8 @@
   },
   "dependencies": {
     "@better-auth/core": "workspace:*",
-    "@better-auth/drizzle-adapter": "workspace:*",
     "@better-auth/kysely-adapter": "workspace:*",
     "@better-auth/memory-adapter": "workspace:*",
-    "@better-auth/mongo-adapter": "workspace:*",
-    "@better-auth/prisma-adapter": "workspace:*",
     "@better-auth/telemetry": "workspace:*",
     "@better-auth/utils": "catalog:",
     "@better-fetch/fetch": "catalog:",
@@ -519,17 +492,12 @@
   },
   "peerDependencies": {
     "@lynx-js/react": "*",
-    "@prisma/client": "^5.0.0 || ^6.0.0 || ^7.0.0",
     "@sveltejs/kit": "^2.0.0",
     "@tanstack/react-start": "^1.0.0",
     "@tanstack/solid-start": "^1.0.0",
-    "drizzle-kit": ">=0.31.4 || >=1.0.0-beta.1",
-    "drizzle-orm": "^0.45.2 || >=1.0.0-rc.1 <2.0.0",
-    "mongodb": "^6.0.0 || ^7.0.0",
     "mysql2": "^3.0.0",
     "next": "^14.0.0 || ^15.0.0 || ^16.0.0",
     "pg": "^8.0.0",
-    "prisma": "^5.0.0 || ^6.0.0 || ^7.0.0",
     "react": "^18.0.0 || ^19.0.0",
     "react-dom": "^18.0.0 || ^19.0.0",
     "solid-js": "^1.0.0",
@@ -539,9 +507,6 @@
   },
   "peerDependenciesMeta": {
     "@lynx-js/react": {
-      "optional": true
-    },
-    "@prisma/client": {
       "optional": true
     },
     "@sveltejs/kit": {
@@ -571,22 +536,10 @@
     "vue": {
       "optional": true
     },
-    "drizzle-kit": {
-      "optional": true
-    },
-    "drizzle-orm": {
-      "optional": true
-    },
-    "mongodb": {
-      "optional": true
-    },
     "mysql2": {
       "optional": true
     },
     "pg": {
-      "optional": true
-    },
-    "prisma": {
       "optional": true
     },
     "vitest": {

@@ -1,10 +1,16 @@
 import * as sdkClientPlugins from "@app/auth-sdk/client/plugins";
 import * as sdkNextJS from "@app/auth-sdk/next-js";
+import * as sdkPayPal from "@app/auth-sdk/paypal";
 import * as sdkPlugins from "@app/auth-sdk/plugins";
 import * as sdkReact from "@app/auth-sdk/react";
 import * as sdkServer from "@app/auth-sdk/server";
 import * as sdkStripe from "@app/auth-sdk/stripe";
 import * as sdkStripeClient from "@app/auth-sdk/stripe/client";
+import * as sdkSubscription from "@app/auth-sdk/subscription";
+import * as sdkSubscriptionClient from "@app/auth-sdk/subscription/client";
+import * as nativePayPal from "@app/paypal";
+import * as nativeSubscription from "@app/subscription";
+import * as nativeSubscriptionClient from "@app/subscription/client";
 import * as nativeStripe from "@better-auth/stripe";
 import * as nativeStripeClient from "@better-auth/stripe/client";
 import * as nativeServer from "better-auth";
@@ -25,6 +31,9 @@ describe("SDK native compatibility", () => {
 			[sdkClientPlugins, nativeClientPlugins],
 			[sdkStripe, nativeStripe],
 			[sdkStripeClient, nativeStripeClient],
+			[sdkPayPal, nativePayPal],
+			[sdkSubscription, nativeSubscription],
+			[sdkSubscriptionClient, nativeSubscriptionClient],
 		] as const) {
 			expect(Object.keys(sdk).sort()).toEqual(Object.keys(native).sort());
 			for (const [name, value] of Object.entries(native)) {

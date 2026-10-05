@@ -1,78 +1,24 @@
+import { createSubscriptionSchema } from "@app/subscription/schema";
 import type { BetterAuthPluginDBSchema } from "@better-auth/core/db";
 import { mergeSchema } from "better-auth/db";
 import type { StripeOptions } from "./types";
 
-export const subscriptions = {
-	subscription: {
-		fields: {
-			plan: {
-				type: "string",
-				required: true,
-			},
-			referenceId: {
-				type: "string",
-				required: true,
-			},
-			stripeCustomerId: {
-				type: "string",
-				required: false,
-			},
-			stripeSubscriptionId: {
-				type: "string",
-				required: false,
-			},
-			status: {
-				type: "string",
-				defaultValue: "incomplete",
-			},
-			periodStart: {
-				type: "date",
-				required: false,
-			},
-			periodEnd: {
-				type: "date",
-				required: false,
-			},
-			trialStart: {
-				type: "date",
-				required: false,
-			},
-			trialEnd: {
-				type: "date",
-				required: false,
-			},
-			cancelAtPeriodEnd: {
-				type: "boolean",
-				required: false,
-				defaultValue: false,
-			},
-			cancelAt: {
-				type: "date",
-				required: false,
-			},
-			canceledAt: {
-				type: "date",
-				required: false,
-			},
-			endedAt: {
-				type: "date",
-				required: false,
-			},
-			seats: {
-				type: "number",
-				required: false,
-			},
-			billingInterval: {
-				type: "string",
-				required: false,
-			},
-			stripeScheduleId: {
-				type: "string",
-				required: false,
+const createStripeSubscriptionSchema = () => {
+	const common = createSubscriptionSchema();
+	return {
+		subscription: {
+			...common.subscription,
+			fields: {
+				...common.subscription.fields,
+				stripeCustomerId: { type: "string", required: false },
+				stripeSubscriptionId: { type: "string", required: false },
+				stripeScheduleId: { type: "string", required: false },
 			},
 		},
-	},
-} satisfies BetterAuthPluginDBSchema;
+	} satisfies BetterAuthPluginDBSchema;
+};
+
+export const subscriptions = createStripeSubscriptionSchema();
 
 export const user = {
 	user: {
@@ -107,7 +53,7 @@ export const getSchema = <O extends StripeOptions>(
 
 	if (options.subscription?.enabled) {
 		baseSchema = {
-			...subscriptions,
+			...createStripeSubscriptionSchema(),
 			...user,
 		};
 	} else {

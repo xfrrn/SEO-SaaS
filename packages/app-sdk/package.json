@@ -17,6 +17,16 @@
     "lint:package": "publint run --strict --pack false"
   },
   "exports": {
+    "./subscription": {
+      "dev-source": "./src/subscription.ts",
+      "types": "./dist/subscription.d.mts",
+      "default": "./dist/subscription.mjs"
+    },
+    "./subscription/client": {
+      "dev-source": "./src/subscription/client.ts",
+      "types": "./dist/subscription/client.d.mts",
+      "default": "./dist/subscription/client.mjs"
+    },
     "./server": {
       "dev-source": "./src/server.ts",
       "types": "./dist/server.d.mts",
@@ -60,6 +70,12 @@
   },
   "typesVersions": {
     "*": {
+      "subscription": [
+        "./dist/subscription.d.mts"
+      ],
+      "subscription/client": [
+        "./dist/subscription/client.d.mts"
+      ],
       "server": [
         "./dist/server.d.mts"
       ],
@@ -85,6 +101,10 @@
         "./dist/stripe/client.d.mts"
       ]
     }
+  },
+  "dependencies": {
+    "@app/paypal": "workspace:^",
+    "@app/subscription": "workspace:^"
   },
   "devDependencies": {
     "@better-auth/core": "workspace:*",

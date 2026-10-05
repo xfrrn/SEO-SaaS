@@ -6,6 +6,9 @@
   },
   "references": [
     {
+      "path": "../subscription/tsconfig.json"
+    },
+    {
       "path": "../better-auth/tsconfig.json"
     },
     {

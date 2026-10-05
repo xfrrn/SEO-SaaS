@@ -1,10 +1,13 @@
 {
   "extends": "./tsconfig.base.json",
-  "include": [
-    "./*.ts",
-    "./*.js"
-  ],
+  "include": ["./*.ts", "./*.js"],
   "references": [
+    {
+      "path": "./packages/subscription/tsconfig.json"
+    },
+    {
+      "path": "./packages/paypal/tsconfig.json"
+    },
     {
       "path": "./packages/app-sdk/tsconfig.json"
     },
@@ -48,16 +51,7 @@
       "path": "./packages/telemetry/tsconfig.json"
     },
     {
-      "path": "./packages/prisma-adapter/tsconfig.json"
-    },
-    {
-      "path": "./packages/mongo-adapter/tsconfig.json"
-    },
-    {
       "path": "./packages/memory-adapter/tsconfig.json"
-    },
-    {
-      "path": "./packages/drizzle-adapter/tsconfig.json"
     },
     {
       "path": "./packages/kysely-adapter/tsconfig.json"

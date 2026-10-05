@@ -1,4 +1,8 @@
 import type {
+	Subscription as CommonSubscription,
+	SubscriptionPlan,
+} from "@app/subscription/types";
+import type {
 	GenericEndpointContext,
 	InferOptionSchema,
 	Session,
@@ -39,7 +43,7 @@ export type CheckoutSessionLineItem = NonNullable<
 	Stripe.Checkout.SessionCreateParams["line_items"]
 >[number];
 
-export type StripePlan = {
+export type StripePlan = SubscriptionPlan & {
 	/**
 	 * Monthly price id
 	 */
@@ -65,23 +69,6 @@ export type StripePlan = {
 	 * manage-prices#lookup-keys
 	 */
 	annualDiscountLookupKey?: string | undefined;
-	/**
-	 * Plan name
-	 */
-	name: string;
-	/**
-	 * Limits for the plan
-	 *
-	 * useful when you want to define plan-specific metadata.
-	 */
-	limits?: Record<string, unknown> | undefined;
-	/**
-	 * Plan group name
-	 *
-	 * useful when you want to group plans or
-	 * when a user can subscribe to multiple plans.
-	 */
-	group?: string | undefined;
 	/**
 	 * Per-seat billing price ID
 	 *
@@ -156,105 +143,15 @@ export type StripePlan = {
 		| undefined;
 };
 
-export interface Subscription {
-	/**
-	 * Database identifier
-	 */
-	id: string;
-	/**
-	 * The plan name
-	 */
-	plan: string;
-	/**
-	 * Stripe customer id
-	 */
+/** Stripe-specific fields on the shared subscription record. */
+export interface Subscription extends CommonSubscription {
+	/** Stripe customer id. */
 	stripeCustomerId?: string | undefined;
-	/**
-	 * Stripe subscription id
-	 */
+	/** Stripe subscription id. */
 	stripeSubscriptionId?: string | undefined;
-	/**
-	 * Trial start date
-	 */
-	trialStart?: Date | undefined;
-	/**
-	 * Trial end date
-	 */
-	trialEnd?: Date | undefined;
-	/**
-	 * Price Id for the subscription
-	 */
+	/** Price ID exposed by the Stripe subscription list. */
 	priceId?: string | undefined;
-	/**
-	 * To what reference id the subscription belongs to
-	 * @example
-	 * - userId for a user
-	 * - workspace id for a saas platform
-	 * - website id for a hosting platform
-	 *
-	 * @default - userId
-	 */
-	referenceId: string;
-	/**
-	 * Subscription status
-	 */
-	status:
-		| "active"
-		| "canceled"
-		| "incomplete"
-		| "incomplete_expired"
-		| "past_due"
-		| "paused"
-		| "trialing"
-		| "unpaid";
-	/**
-	 * The billing cycle start date
-	 */
-	periodStart?: Date | undefined;
-	/**
-	 * The billing cycle end date
-	 */
-	periodEnd?: Date | undefined;
-	/**
-	 * Whether this subscription will (if status=active)
-	 * or did (if status=canceled) cancel at the end of the current billing period.
-	 */
-	cancelAtPeriodEnd?: boolean | undefined;
-	/**
-	 * If the subscription is scheduled to be canceled,
-	 * this is the time at which the cancellation will take effect.
-	 */
-	cancelAt?: Date | undefined;
-	/**
-	 * If the subscription has been canceled, this is the time when it was canceled.
-	 *
-	 * Note: If the subscription was canceled with `cancel_at_period_end`,
-	 * this reflects the cancellation request time, not when the subscription actually ends.
-	 */
-	canceledAt?: Date | undefined;
-	/**
-	 * If the subscription has ended, the date the subscription ended.
-	 */
-	endedAt?: Date | undefined;
-	/**
-	 * A field to group subscriptions so you can have multiple subscriptions
-	 * for one reference id
-	 */
-	groupId?: string | undefined;
-	/**
-	 * Number of seats for the subscription (useful for team plans)
-	 */
-	seats?: number | undefined;
-	/**
-	 * The billing interval for this subscription.
-	 * Indicates how often the subscription is billed.
-	 * @see https://docs.stripe.com/api/plans/object#plan_object-interval
-	 */
-	billingInterval?: "day" | "week" | "month" | "year" | undefined;
-	/**
-	 * Stripe Subscription Schedule ID, present when a scheduled
-	 * plan change is pending for this subscription.
-	 */
+	/** Stripe schedule ID for a pending plan change. */
 	stripeScheduleId?: string | undefined;
 }
 

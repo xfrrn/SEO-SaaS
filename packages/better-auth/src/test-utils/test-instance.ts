@@ -59,7 +59,7 @@ export async function getTestInstance<
 				port?: number;
 				disableTestUser?: boolean;
 				testUser?: Partial<User>;
-				testWith?: "sqlite" | "postgres" | "mongodb" | "mysql";
+				testWith?: "sqlite" | "postgres" | "mysql";
 				transaction?: boolean;
 		  }
 		| undefined,
@@ -111,23 +111,6 @@ export async function getTestInstance<
 		});
 	}
 
-	async function mongodbClient() {
-		const { MongoClient } = await import("mongodb");
-		const dbClient = async (connectionString: string, dbName: string) => {
-			// Fail fast in CI/local when Mongo is unreachable instead of hanging
-			// until Vitest's default 10s testTimeout (driver default is 30s).
-			const client = new MongoClient(connectionString, {
-				serverSelectionTimeoutMS: 2000,
-				connectTimeoutMS: 2000,
-			});
-			await client.connect();
-			const db = client.db(dbName);
-			return db;
-		};
-		const db = await dbClient("mongodb://127.0.0.1:27017", "better-auth");
-		return db;
-	}
-
 	const opts = {
 		socialProviders: {
 			github: {
@@ -147,18 +130,13 @@ export async function getTestInstance<
 						type: "postgres",
 						transaction: config?.transaction,
 					}
-				: testWith === "mongodb"
-					? await Promise.all([
-							mongodbClient(),
-							await import("../adapters/mongodb-adapter"),
-						]).then(([db, { mongodbAdapter }]) => mongodbAdapter(db))
-					: testWith === "mysql"
-						? {
-								db: await getMysql(),
-								type: "mysql",
-								transaction: config?.transaction,
-							}
-						: await getSqlite(),
+				: testWith === "mysql"
+					? {
+							db: await getMysql(),
+							type: "mysql",
+							transaction: config?.transaction,
+						}
+					: await getSqlite(),
 		emailAndPassword: {
 			enabled: true,
 		},
@@ -185,13 +163,11 @@ export async function getTestInstance<
 		plugins: [bearer(), ...(options?.plugins || [])],
 	} as unknown as O;
 
-	if (testWith !== "mongodb") {
-		const { runMigrations } = await getMigrations({
-			...authOptions,
-			database: opts.database,
-		});
-		await runMigrations();
-	}
+	const { runMigrations } = await getMigrations({
+		...authOptions,
+		database: opts.database,
+	});
+	await runMigrations();
 
 	const auth = betterAuth(authOptions);
 
@@ -231,11 +207,6 @@ export async function getTestInstance<
 	await createTestUser();
 
 	const cleanup = async () => {
-		if (testWith === "mongodb") {
-			const db = await mongodbClient();
-			await db.dropDatabase();
-			return;
-		}
 		if (testWith === "postgres") {
 			const postgres = await getPostgres();
 			if (postgresSchema) {

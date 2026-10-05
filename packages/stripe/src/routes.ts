@@ -30,8 +30,12 @@ import {
 	getPlans,
 	isActiveOrTrialing,
 	isPendingCancel,
+	isStripeSubscription,
+	onlyStripeSubscription,
 	resolvePlanItem,
 	resolveQuantity,
+	stripeSubscriptionData,
+	stripeSubscriptionWhere,
 } from "./utils";
 
 /**
@@ -301,15 +305,17 @@ export const upgradeSubscription = (options: StripeOptions) => {
 			// If subscriptionId is provided, find that specific subscription.
 			// Otherwise, active subscription will be resolved by referenceId later.
 			const subscriptionToUpdate = ctx.body.subscriptionId
-				? await ctx.context.adapter.findOne<Subscription>({
-						model: "subscription",
-						where: [
-							{
-								field: "stripeSubscriptionId",
-								value: ctx.body.subscriptionId,
-							},
-						],
-					})
+				? await ctx.context.adapter
+						.findOne<Subscription>({
+							model: "subscription",
+							where: stripeSubscriptionWhere(ctx.context, [
+								{
+									field: "stripeSubscriptionId",
+									value: ctx.body.subscriptionId,
+								},
+							]),
+						})
+						.then(onlyStripeSubscription)
 				: null;
 			if (ctx.body.subscriptionId && !subscriptionToUpdate) {
 				throw APIError.from(
@@ -538,15 +544,17 @@ export const upgradeSubscription = (options: StripeOptions) => {
 
 			const subscriptions = subscriptionToUpdate
 				? [subscriptionToUpdate]
-				: await ctx.context.adapter.findMany<Subscription>({
-						model: "subscription",
-						where: [
-							{
-								field: "referenceId",
-								value: referenceId,
-							},
-						],
-					});
+				: await ctx.context.adapter
+						.findMany<Subscription>({
+							model: "subscription",
+							where: stripeSubscriptionWhere(ctx.context, [
+								{
+									field: "referenceId",
+									value: referenceId,
+								},
+							]),
+						})
+						.then((rows) => rows.filter(isStripeSubscription));
 
 			const activeOrTrialingSubscription = subscriptions.find((sub) =>
 				isActiveOrTrialing(sub),
@@ -648,21 +656,27 @@ export const upgradeSubscription = (options: StripeOptions) => {
 
 			if (activeSubscription && customerId) {
 				// Find the corresponding database subscription for this Stripe subscription
-				let dbSubscription = await ctx.context.adapter.findOne<Subscription>({
-					model: "subscription",
-					where: [
-						{
-							field: "stripeSubscriptionId",
-							value: activeSubscription.id,
-						},
-					],
-				});
+				let dbSubscription = await ctx.context.adapter
+					.findOne<Subscription>({
+						model: "subscription",
+						where: stripeSubscriptionWhere(ctx.context, [
+							{
+								field: "stripeSubscriptionId",
+								value: activeSubscription.id,
+							},
+						]),
+					})
+					.then(onlyStripeSubscription);
 
 				// If no database record exists for this Stripe subscription, update the existing one
 				if (!dbSubscription && activeOrTrialingSubscription) {
 					await ctx.context.adapter.update<Subscription>({
 						model: "subscription",
 						update: {
+							...stripeSubscriptionData(ctx.context, {
+								stripeSubscriptionId: activeSubscription.id,
+								stripeCustomerId: customerId,
+							}),
 							stripeSubscriptionId: activeSubscription.id,
 							updatedAt: new Date(),
 						},
@@ -673,7 +687,10 @@ export const upgradeSubscription = (options: StripeOptions) => {
 							},
 						],
 					});
-					dbSubscription = activeOrTrialingSubscription;
+					dbSubscription = {
+						...activeOrTrialingSubscription,
+						stripeSubscriptionId: activeSubscription.id,
+					};
 				}
 
 				if (!planItem) {
@@ -706,6 +723,7 @@ export const upgradeSubscription = (options: StripeOptions) => {
 							await ctx.context.adapter.update({
 								model: "subscription",
 								update: {
+									...stripeSubscriptionData(ctx.context, dbSubscription),
 									stripeScheduleId: null,
 									updatedAt: new Date(),
 								},
@@ -877,6 +895,7 @@ export const upgradeSubscription = (options: StripeOptions) => {
 						await ctx.context.adapter.update({
 							model: "subscription",
 							update: {
+								...stripeSubscriptionData(ctx.context, dbSubscription),
 								stripeScheduleId: schedule.id,
 								updatedAt: new Date(),
 							},
@@ -957,6 +976,7 @@ export const upgradeSubscription = (options: StripeOptions) => {
 						await ctx.context.adapter.update<Subscription>({
 							model: "subscription",
 							update: {
+								...stripeSubscriptionData(ctx.context, dbSubscription),
 								plan: plan.name.toLowerCase(),
 								seats: memberCount,
 								updatedAt: new Date(),
@@ -1014,6 +1034,7 @@ export const upgradeSubscription = (options: StripeOptions) => {
 				const updated = await ctx.context.adapter.update<Subscription>({
 					model: "subscription",
 					update: {
+						...stripeSubscriptionData(ctx.context, incompleteSubscription),
 						plan: plan.name.toLowerCase(),
 						seats: isAutoManagedSeats ? memberCount : ctx.body.seats || 1,
 						updatedAt: new Date(),
@@ -1032,6 +1053,9 @@ export const upgradeSubscription = (options: StripeOptions) => {
 				subscription = await ctx.context.adapter.create<Subscription>({
 					model: "subscription",
 					data: {
+						...stripeSubscriptionData(ctx.context, {
+							stripeCustomerId: customerId,
+						}),
 						plan: plan.name.toLowerCase(),
 						stripeCustomerId: customerId,
 						status: "incomplete",
@@ -1269,20 +1293,25 @@ export const cancelSubscription = (options: StripeOptions) => {
 			const referenceId = ctx.context.referenceId;
 
 			let subscription = ctx.body.subscriptionId
-				? await ctx.context.adapter.findOne<Subscription>({
-						model: "subscription",
-						where: [
-							{
-								field: "stripeSubscriptionId",
-								value: ctx.body.subscriptionId,
-							},
-						],
-					})
+				? await ctx.context.adapter
+						.findOne<Subscription>({
+							model: "subscription",
+							where: stripeSubscriptionWhere(ctx.context, [
+								{
+									field: "stripeSubscriptionId",
+									value: ctx.body.subscriptionId,
+								},
+							]),
+						})
+						.then(onlyStripeSubscription)
 				: await ctx.context.adapter
 						.findMany<Subscription>({
 							model: "subscription",
-							where: [{ field: "referenceId", value: referenceId }],
+							where: stripeSubscriptionWhere(ctx.context, [
+								{ field: "referenceId", value: referenceId },
+							]),
 						})
+						.then((rows) => rows.filter(isStripeSubscription))
 						.then((subs) => subs.find((sub) => isActiveOrTrialing(sub)));
 			if (
 				ctx.body.subscriptionId &&
@@ -1349,6 +1378,7 @@ export const cancelSubscription = (options: StripeOptions) => {
 							await ctx.context.adapter.update({
 								model: "subscription",
 								update: {
+									...stripeSubscriptionData(ctx.context, subscription),
 									cancelAtPeriodEnd: stripeSub.cancel_at_period_end,
 									cancelAt: stripeSub.cancel_at
 										? new Date(stripeSub.cancel_at * 1000)
@@ -1428,25 +1458,28 @@ export const restoreSubscription = (options: StripeOptions) => {
 			const referenceId = ctx.context.referenceId;
 
 			let subscription = ctx.body.subscriptionId
-				? await ctx.context.adapter.findOne<Subscription>({
-						model: "subscription",
-						where: [
-							{
-								field: "stripeSubscriptionId",
-								value: ctx.body.subscriptionId,
-							},
-						],
-					})
+				? await ctx.context.adapter
+						.findOne<Subscription>({
+							model: "subscription",
+							where: stripeSubscriptionWhere(ctx.context, [
+								{
+									field: "stripeSubscriptionId",
+									value: ctx.body.subscriptionId,
+								},
+							]),
+						})
+						.then(onlyStripeSubscription)
 				: await ctx.context.adapter
 						.findMany<Subscription>({
 							model: "subscription",
-							where: [
+							where: stripeSubscriptionWhere(ctx.context, [
 								{
 									field: "referenceId",
 									value: referenceId,
 								},
-							],
+							]),
 						})
+						.then((rows) => rows.filter(isStripeSubscription))
 						.then((subs) => subs.find((sub) => isActiveOrTrialing(sub)));
 			if (
 				ctx.body.subscriptionId &&
@@ -1509,6 +1542,7 @@ export const restoreSubscription = (options: StripeOptions) => {
 				await ctx.context.adapter.update({
 					model: "subscription",
 					update: {
+						...stripeSubscriptionData(ctx.context, subscription),
 						stripeScheduleId: null,
 						updatedAt: new Date(),
 					},
@@ -1565,6 +1599,7 @@ export const restoreSubscription = (options: StripeOptions) => {
 			await ctx.context.adapter.update({
 				model: "subscription",
 				update: {
+					...stripeSubscriptionData(ctx.context, subscription),
 					cancelAtPeriodEnd: false,
 					cancelAt: null,
 					canceledAt: null,
@@ -1639,15 +1674,17 @@ export const listActiveSubscriptions = (options: StripeOptions) => {
 		async (ctx) => {
 			const referenceId = ctx.context.referenceId;
 
-			const subscriptions = await ctx.context.adapter.findMany<Subscription>({
-				model: "subscription",
-				where: [
-					{
-						field: "referenceId",
-						value: referenceId,
-					},
-				],
-			});
+			const subscriptions = await ctx.context.adapter
+				.findMany<Subscription>({
+					model: "subscription",
+					where: stripeSubscriptionWhere(ctx.context, [
+						{
+							field: "referenceId",
+							value: referenceId,
+						},
+					]),
+				})
+				.then((rows) => rows.filter(isStripeSubscription));
 			if (!subscriptions.length) {
 				return [];
 			}
@@ -1741,15 +1778,17 @@ export const subscriptionSuccess = (options: StripeOptions) => {
 				throw ctx.redirect(getUrl(ctx, callbackURL));
 			}
 
-			const subscription = await ctx.context.adapter.findOne<Subscription>({
-				model: "subscription",
-				where: [
-					{
-						field: "id",
-						value: subscriptionId,
-					},
-				],
-			});
+			const subscription = await ctx.context.adapter
+				.findOne<Subscription>({
+					model: "subscription",
+					where: stripeSubscriptionWhere(ctx.context, [
+						{
+							field: "id",
+							value: subscriptionId,
+						},
+					]),
+				})
+				.then(onlyStripeSubscription);
 			if (!subscription) {
 				ctx.context.logger.warn(
 					`Subscription record not found for subscriptionId: ${subscriptionId}`,
@@ -1818,6 +1857,10 @@ export const subscriptionSuccess = (options: StripeOptions) => {
 			await ctx.context.adapter.update({
 				model: "subscription",
 				update: {
+					...stripeSubscriptionData(ctx.context, {
+						stripeSubscriptionId: stripeSubscription.id,
+						stripeCustomerId: subscription.stripeCustomerId,
+					}),
 					...(stripeSubscription.trial_start && stripeSubscription.trial_end
 						? {
 								trialStart: new Date(stripeSubscription.trial_start * 1000),
@@ -1932,8 +1975,11 @@ export const createBillingPortal = (options: StripeOptions) => {
 					const subscription = await ctx.context.adapter
 						.findMany<Subscription>({
 							model: "subscription",
-							where: [{ field: "referenceId", value: referenceId }],
+							where: stripeSubscriptionWhere(ctx.context, [
+								{ field: "referenceId", value: referenceId },
+							]),
 						})
+						.then((rows) => rows.filter(isStripeSubscription))
 						.then((subs) => subs.find((sub) => isActiveOrTrialing(sub)));
 					customerId = subscription?.stripeCustomerId;
 				}
@@ -1944,13 +1990,14 @@ export const createBillingPortal = (options: StripeOptions) => {
 					const subscription = await ctx.context.adapter
 						.findMany<Subscription>({
 							model: "subscription",
-							where: [
+							where: stripeSubscriptionWhere(ctx.context, [
 								{
 									field: "referenceId",
 									value: referenceId,
 								},
-							],
+							]),
 						})
+						.then((rows) => rows.filter(isStripeSubscription))
 						.then((subs) => subs.find((sub) => isActiveOrTrialing(sub)));
 
 					customerId = subscription?.stripeCustomerId;
