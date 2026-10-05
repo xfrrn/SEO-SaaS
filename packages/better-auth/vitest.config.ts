@@ -6,11 +6,6 @@ export default defineProject({
 		injectCjsGlobals: false,
 		testTimeout: 10_000,
 		execArgv: ["--expose-gc"],
-		// Exclude adapter tests by default - they are run separately via test:adapters
-		exclude: [
-			"**/node_modules/**",
-			"**/dist/**",
-			"**/src/adapters/**/*.test.ts",
-		],
+		exclude: ["**/node_modules/**", "**/dist/**"],
 	},
 });

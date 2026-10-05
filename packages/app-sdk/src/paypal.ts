@@ -138,7 +138,7 @@ function webhookError() {
 /**
  * Create a server-only PayPal Orders v2 client using standard Web APIs.
  * This is a payment helper, not a Better Auth plugin. Authorization, persistence
- * and fulfillment belong to the application (see the Next.js PayPal example).
+ * and fulfillment belong to the application.
  */
 export function createPayPalClient(options: PayPalOptions) {
 	const environment = options.environment ?? "sandbox";

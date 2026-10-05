@@ -1,6 +1,0 @@
-{
-  "title": "API Key",
-  "icon": "pluginsAPIKey",
-  "pagesIndex": "index",
-  "pages": ["advanced", "reference", "..."]
-}

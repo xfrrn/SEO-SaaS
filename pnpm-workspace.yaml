@@ -1,7 +1,5 @@
 packages:
   - packages/**
-  - docs
-  - e2e/**
   - test
 
 overrides:
@@ -82,13 +80,7 @@ catalogs:
     '@types/react-dom': ^19.2.3
     react: ^19.2.7
     react-dom: ^19.2.7
-  tailwind:
-    '@tailwindcss/postcss': ^4.3.1
-    tailwindcss: ^4.3.1
-    tailwindcss-animate: ^1.0.7
   vitest:
-    '@vitest/coverage-istanbul': ^5.0.0
-    '@vitest/ui': ^5.0.0
     vitest: ^5.0.0
 
 allowBuilds:
@@ -99,7 +91,6 @@ allowBuilds:
   '@tsparticles/engine': true
   better-sqlite3: true
   esbuild: true
-  lefthook: true
   less: true
   msw: true
   prisma: true
@@ -129,9 +120,6 @@ packageExtensions:
   drizzle-kit:
     peerDependencies:
       drizzle-orm: '*'
-
-patchedDependencies:
-  '@changesets/assemble-release-plan': patches/@changesets__assemble-release-plan.patch
 
 trustPolicy: no-downgrade
 

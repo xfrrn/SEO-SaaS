@@ -6,20 +6,22 @@ This is the Better Auth repository - a comprehensive authentication framework fo
 
 - `packages/better-auth` - Main authentication library
 - `packages/core` - Shared core types and utilities
-- `packages/cli` - CLI tool
+- `packages/app-sdk` - Application SDK entry points and PayPal client
 - `packages/*` - Database adapters, plugins, integrations
-- `docs/` - Documentation site (Next.js + Fumadocs), content in `docs/content/docs/`
 - `test/` - Shared test workspace
-- `e2e/` - End-to-end tests (smoke, adapter, integration)
-- `demo/` - Example apps
+- `scripts/` - SDK packaging and packaging tests
+- `README.md` and `packages/app-sdk/README.md` - SDK usage documentation
 
 ## Commands
 
 - ALWAYS use `pnpm` (never npm, yarn, or bun)
-- NEVER run `pnpm test` (runs all packages). Use `vitest path/to/test -t <pattern>`
+- NEVER run `pnpm test`. Use `pnpm test:sdk` or `pnpm exec vitest run path/to/test -t <pattern>`
+- Build the main SDK: `pnpm build:sdk`; build all packages: `pnpm build`
+- Package for consumers: `pnpm pack:sdk` (creates `dist/auth-sdk.tgz` with local workspace runtime dependencies bundled)
+- Verify packaging: `pnpm test:packaging`
 - Type check: `pnpm typecheck`
-- After changing a dependency version in `package.json` or `pnpm-workspace.yaml`, run `pnpm install --lockfile-only` from the affected workspace root to avoid unrelated lockfile updates. Verify with `pnpm install --frozen-lockfile`. Nested `demo/*` workspaces have separate lockfiles.
-- Formatting/linting runs automatically on commit (Lefthook + Biome). No need to run manually.
+- After changing a dependency version in `package.json` or `pnpm-workspace.yaml`, run `pnpm install --lockfile-only` from the workspace root to avoid unrelated lockfile updates. Verify with `pnpm install --frozen-lockfile`.
+- Format with `pnpm format`; check code with `pnpm lint`. No automatic commit hooks are installed.
 
 ## Writing Code
 
@@ -63,12 +65,12 @@ When a flow must synthesize an email, use `createPlaceholderEmail` with a stable
 
 ## Testing
 
-- Most tests use Vitest; some under `e2e/` use Playwright
+- SDK and native package tests use Vitest; packaging tests use `node:test`
 - Use `getTestInstance()` from `better-auth/test`. It returns `{ client, auth, sessionSetter, ... }`
 - Pass client plugins via `clientOptions.plugins`
 - NEVER create separate clients with `createAuthClient()` in tests
 - Default test DB is SQLite in-memory; use `testWith` for other databases
-- Adapter tests need Docker: `docker compose up -d`
+- External database tests can use `docker compose --project-directory . -f test/docker-compose.yml up -d`.
 - Regression tests: use `@see` for relevant issues or authoritative sources. Do not reference the current pull request or its review comments:
   ```typescript
   /**
@@ -84,7 +86,7 @@ When a flow must synthesize an email, use `createPlaceholderEmail` with a stable
 
 - Bug fixes and new features MUST include tests
   - For bug fixes: after confirming the reproducible behavior violates the intended contract, write a failing test first, then implement the fix
-- Update docs (`docs/content/docs/`) when changing public API
+- Update SDK usage documentation (`README.md` and `packages/app-sdk/README.md`) when changing public API
 - Ensure `pnpm typecheck` passes before finishing
 - DO NOT COMMIT unless the user explicitly asks
 - Conventional Commits: `feat(scope):`, `fix(scope):`, `docs:`, `chore:`. Use `!` for breaking changes (e.g. `feat(auth)!:`)
