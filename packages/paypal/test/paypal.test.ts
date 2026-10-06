@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createPayPalClient } from "../src/index";
+import type { PayPalOptions } from "../src/index";
+import { createPayPalClient, isPayPalOrderExpiredError } from "../src/index";
 
 const credentials = {
 	clientId: "test-client-id",
@@ -294,6 +295,343 @@ describe("PayPal Orders SDK", () => {
 		fetchMock.mockRejectedValueOnce(error);
 		await expect(client.createOrder(orderInput)).rejects.toBe(error);
 		expect(fetchMock).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("PayPal business order expiration", () => {
+	const createdAt = Date.UTC(2026, 9, 6);
+	const ttlMs = 30 * 60 * 1000;
+	const expiresAt = createdAt + ttlMs;
+
+	beforeEach(() => {
+		vi.spyOn(Date, "now").mockReturnValue(createdAt);
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it("calculates the default or custom deadline from the original creation time", () => {
+		const client = createPayPalClient({
+			...credentials,
+			orderExpiration: true,
+		});
+		expect(client.calculateOrderExpiresAt(createdAt)).toBe(expiresAt);
+		vi.mocked(Date.now).mockReturnValue(createdAt + 60_000);
+		expect(client.calculateOrderExpiresAt(createdAt)).toBe(expiresAt);
+		expect(
+			createPayPalClient({
+				...credentials,
+				orderExpiration: { ttlMs: 10 * 60 * 1000 },
+			}).calculateOrderExpiresAt(createdAt),
+		).toBe(createdAt + 10 * 60 * 1000);
+	});
+
+	it.each([
+		undefined,
+		false,
+	] as const)("preserves legacy create and capture calls with expiration %s", async (orderExpiration) => {
+		const client = createPayPalClient({ ...credentials, orderExpiration });
+		expect(client.calculateOrderExpiresAt(createdAt)).toBeUndefined();
+		expect(() => client.assertOrderPayable()).not.toThrow();
+		const order = { id: "ORDER123", status: "COMPLETED" };
+		tokenThen(order);
+		expect(await client.createOrder(orderInput)).toEqual(order);
+		tokenThen(order);
+		expect(
+			await client.captureOrder({ orderId: order.id, requestId: "capture-1" }),
+		).toEqual(order);
+	});
+
+	it.each([
+		null,
+		0,
+		"true",
+		{},
+		[],
+		{ ttlMs: undefined },
+		{ ttlMs: null },
+		{ ttlMs: 0 },
+		{ ttlMs: -1 },
+		{ ttlMs: 0.5 },
+		{ ttlMs: "1800000" },
+		{ ttlMs: Number.NaN },
+		{ ttlMs: Number.POSITIVE_INFINITY },
+		{ ttlMs: 8_640_000_000_000_001 },
+	])("rejects invalid expiration configuration %j", (orderExpiration) => {
+		expect(() =>
+			createPayPalClient({
+				...credentials,
+				orderExpiration: orderExpiration as PayPalOptions["orderExpiration"],
+			}),
+		).toThrow();
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		undefined,
+		null,
+		"2026-10-06T00:00:00Z",
+		-1,
+		0.5,
+		Number.NaN,
+		Number.POSITIVE_INFINITY,
+		8_640_000_000_000_001,
+	])("rejects invalid creation and saved expiry timestamps %j", async (time) => {
+		const client = createPayPalClient({
+			...credentials,
+			orderExpiration: true,
+		});
+		const invalidTime = time as number;
+		expect(() => client.calculateOrderExpiresAt(invalidTime)).toThrow();
+		expect(() => client.assertOrderPayable(invalidTime)).toThrow();
+		await expect(
+			client.createOrder({ ...orderInput, expiresAt: invalidTime }),
+		).rejects.toThrow();
+		await expect(
+			client.captureOrder({
+				orderId: "ORDER123",
+				requestId: "capture-1",
+				expiresAt: invalidTime,
+			}),
+		).rejects.toThrow();
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it("rejects date overflow while retaining valid timestamp boundaries", () => {
+		const client = createPayPalClient({
+			...credentials,
+			orderExpiration: true,
+		});
+		expect(client.calculateOrderExpiresAt(0)).toBe(ttlMs);
+		expect(client.calculateOrderExpiresAt(8_640_000_000_000_000 - ttlMs)).toBe(
+			8_640_000_000_000_000,
+		);
+		expect(() =>
+			client.calculateOrderExpiresAt(8_640_000_000_000_001 - ttlMs),
+		).toThrow();
+	});
+
+	it.each([
+		-1, 0, 1,
+	])("uses an inclusive deadline at expiry %i ms", (offset) => {
+		const client = createPayPalClient({
+			...credentials,
+			orderExpiration: true,
+		});
+		vi.mocked(Date.now).mockReturnValue(expiresAt + offset);
+		if (offset < 0) {
+			expect(() => client.assertOrderPayable(expiresAt)).not.toThrow();
+			return;
+		}
+		let error: unknown;
+		try {
+			client.assertOrderPayable(expiresAt);
+		} catch (caught) {
+			error = caught;
+		}
+		expect(error).toBeInstanceOf(Error);
+		expect(error).toMatchObject({
+			name: "PayPalOrderExpiredError",
+			code: "PAYPAL_ORDER_EXPIRED",
+			expiresAt,
+		});
+		expect(isPayPalOrderExpiredError(error)).toBe(true);
+		expect(isPayPalOrderExpiredError(new Error("network unavailable"))).toBe(
+			false,
+		);
+		expect(isPayPalOrderExpiredError(null)).toBe(false);
+	});
+
+	it.each([
+		true,
+		false,
+	] as const)("blocks expired create and capture before HTTP with expiration enabled=%s", async (orderExpiration) => {
+		const client = createPayPalClient({ ...credentials, orderExpiration });
+		vi.mocked(Date.now).mockReturnValue(expiresAt);
+		for (const operation of [
+			client.createOrder({ ...orderInput, expiresAt }),
+			client.captureOrder({
+				orderId: "ORDER123",
+				requestId: "capture-1",
+				expiresAt,
+			}),
+		]) {
+			await expect(operation).rejects.toMatchObject({
+				code: "PAYPAL_ORDER_EXPIRED",
+				expiresAt,
+			});
+		}
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		"create",
+		"capture",
+	] as const)("rechecks the deadline after OAuth before sending %s", async (operation) => {
+		const client = createPayPalClient({
+			...credentials,
+			orderExpiration: true,
+		});
+		fetchMock.mockImplementationOnce(async () => {
+			vi.mocked(Date.now).mockReturnValue(expiresAt);
+			return respond({ access_token: "test-access-token" });
+		});
+		await expect(
+			operation === "create"
+				? client.createOrder({ ...orderInput, expiresAt })
+				: client.captureOrder({
+						orderId: "ORDER123",
+						requestId: "capture-1",
+						expiresAt,
+					}),
+		).rejects.toMatchObject({ code: "PAYPAL_ORDER_EXPIRED" });
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		expect(fetchMock.mock.calls[0]?.[0]).toContain("/v1/oauth2/token");
+	});
+
+	it("reuses the saved expiry and request ID when restoring and retrying orders", async () => {
+		const client = createPayPalClient({
+			...credentials,
+			orderExpiration: true,
+		});
+		const saved = {
+			...orderInput,
+			expiresAt: client.calculateOrderExpiresAt(createdAt),
+		};
+		const order = { id: "ORDER123", status: "CREATED" };
+		tokenThen(order);
+		await client.createOrder(saved);
+		vi.mocked(Date.now).mockReturnValue(expiresAt - 1);
+		const restored = createPayPalClient({
+			...credentials,
+			orderExpiration: { ttlMs: ttlMs * 2 },
+		});
+		tokenThen(order);
+		await restored.createOrder(saved);
+		expect(sentBody(3)).toEqual(sentBody(1));
+		expect(sentBody(3)).not.toHaveProperty("expiresAt");
+		for (const callIndex of [1, 3]) {
+			expect(
+				new Headers(fetchMock.mock.calls[callIndex]?.[1]?.headers).get(
+					"paypal-request-id",
+				),
+			).toBe(saved.requestId);
+		}
+		vi.mocked(Date.now).mockReturnValue(expiresAt);
+		await expect(restored.createOrder(saved)).rejects.toMatchObject({
+			code: "PAYPAL_ORDER_EXPIRED",
+			expiresAt,
+		});
+		expect(fetchMock).toHaveBeenCalledTimes(4);
+	});
+
+	it.each([
+		"COMPLETED",
+		"PENDING",
+	])("preserves a %s capture response that arrives after expiration", async (status) => {
+		const client = createPayPalClient({
+			...credentials,
+			orderExpiration: true,
+		});
+		const order = {
+			id: "ORDER123",
+			status: "COMPLETED",
+			purchase_units: [
+				{
+					payments: {
+						captures: [{ id: "CAPTURE123", status, amount: orderInput.amount }],
+					},
+				},
+			],
+		};
+		fetchMock.mockResolvedValueOnce(respond({ access_token: "test-token" }));
+		fetchMock.mockImplementationOnce(async () => {
+			vi.mocked(Date.now).mockReturnValue(expiresAt + 1);
+			return respond(order);
+		});
+		expect(
+			await client.captureOrder({
+				orderId: order.id,
+				requestId: "capture-1",
+				expiresAt,
+			}),
+		).toEqual(order);
+		expect(sentBody(1)).toEqual({});
+		expect(
+			new Headers(fetchMock.mock.calls[1]?.[1]?.headers).get(
+				"paypal-request-id",
+			),
+		).toBe("capture-1");
+	});
+
+	it("preserves an uncertain capture network error across expiration", async () => {
+		const client = createPayPalClient({
+			...credentials,
+			orderExpiration: true,
+		});
+		const savedCapture = {
+			orderId: "ORDER123",
+			requestId: "capture-1",
+			expiresAt,
+		};
+		const error = new Error("capture response lost");
+		fetchMock.mockResolvedValueOnce(respond({ access_token: "test-token" }));
+		fetchMock.mockImplementationOnce(async () => {
+			vi.mocked(Date.now).mockReturnValue(expiresAt + 1);
+			throw error;
+		});
+		await expect(client.captureOrder(savedCapture)).rejects.toBe(error);
+		expect(isPayPalOrderExpiredError(error)).toBe(false);
+		await expect(client.captureOrder(savedCapture)).rejects.toMatchObject({
+			code: "PAYPAL_ORDER_EXPIRED",
+			expiresAt,
+		});
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+		const completedOrder = {
+			id: savedCapture.orderId,
+			status: "COMPLETED",
+			purchase_units: [
+				{
+					payments: {
+						captures: [
+							{
+								id: "CAPTURE123",
+								status: "COMPLETED",
+								amount: orderInput.amount,
+							},
+						],
+					},
+				},
+			],
+		};
+		tokenThen(completedOrder);
+		expect(await client.getOrder(savedCapture.orderId)).toEqual(completedOrder);
+		expect(fetchMock).toHaveBeenCalledTimes(4);
+	});
+
+	it("allows order reconciliation and delayed webhook verification after expiration", async () => {
+		const client = createPayPalClient({
+			...credentials,
+			orderExpiration: true,
+		});
+		vi.mocked(Date.now).mockReturnValue(expiresAt + 1);
+		const order = { id: "ORDER123", status: "COMPLETED" };
+		tokenThen(order);
+		expect(await client.getOrder(order.id)).toEqual(order);
+		const event = {
+			id: "WH-DELAYED",
+			event_type: "PAYMENT.CAPTURE.COMPLETED",
+			resource: { id: "CAPTURE123", status: "COMPLETED" },
+		};
+		tokenThen({ verification_status: "SUCCESS" });
+		expect(
+			await client.verifyWebhook({
+				headers: webhookHeaders(),
+				body: JSON.stringify(event),
+			}),
+		).toEqual(event);
+		expect(fetchMock).toHaveBeenCalledTimes(4);
 	});
 });
 

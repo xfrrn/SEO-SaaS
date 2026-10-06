@@ -238,6 +238,30 @@ import { createPayPalClient } from "@app/auth-sdk/paypal";
 
 使用 `clientId`、`clientSecret`、`webhookId` 初始化后，可调用 `createOrder`、`getOrder`、`captureOrder` 和 `verifyWebhook`。默认使用沙箱，正式环境配置 `environment: "live"`。该接口提供 PayPal Orders v2 一次性付款能力；订单持久化、用户授权和付款后的业务处理由使用方负责，不含自动续费。
 
+可选的 `orderExpiration: true` 将**业务订单创建后的付款期限**设为 30 分钟；`orderExpiration: { ttlMs: 15 * 60_000 }` 可自定义正整数毫秒数。省略或设为 `false` 时，旧调用保持不变。它与套餐、积分有效期以及 HTTP 请求超时无关：
+
+```ts
+const paypal = createPayPalClient({
+  clientId: process.env.PAYPAL_CLIENT_ID!,
+  clientSecret: process.env.PAYPAL_CLIENT_SECRET!,
+  webhookId: process.env.PAYPAL_WEBHOOK_ID!,
+  orderExpiration: true,
+});
+
+// 仅在首次创建业务订单时执行，时间来自服务端。
+const createdAt = Date.now();
+const expiresAt = paypal.calculateOrderExpiresAt(createdAt);
+// 应用先持久化 createdAt、expiresAt 和稳定的创建/扣款 requestId，再调用 PayPal。
+// 重试、刷新和恢复订单都读取原记录，不重新计算 expiresAt。
+paypal.assertOrderPayable(expiresAt);
+// createOrder({ ...原参数, expiresAt }) / captureOrder({ ...原参数, expiresAt })
+// 也会在发起付款请求前检查应用从数据库读取的 expiresAt。
+```
+
+启用后缺少 `expiresAt` 会拒绝付款；即使之后关闭配置，显式传入的已保存期限仍会校验。到达期限时抛出可由 `isPayPalOrderExpiredError` 识别的 `PAYPAL_ORDER_EXPIRED` 错误，仅表示本次付款请求被阻止，不证明先前没有扣款，也不会关闭 PayPal 平台订单。查询与验签始终保留；已扣款、结果不确定及延迟回调必须继续对账并幂等履约或退款。前端倒计时只作展示。
+
+SDK 不增加订单数据库、定时任务或退款 API。完整的保存期限、恢复订单、处理过期错误与延迟回调示例，以及 IAMF 接入清单，见 [SDK 的未付款订单有效期说明](./packages/app-sdk/README.md#未付款订单有效期)。
+
 ## 测试
 
 ```bash

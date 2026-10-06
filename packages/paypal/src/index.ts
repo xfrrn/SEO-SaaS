@@ -5,6 +5,11 @@ export interface PayPalOptions {
 	webhookId: string;
 	/** Defaults to sandbox. Live credentials must be configured separately. */
 	environment?: "sandbox" | "live";
+	/**
+	 * Business-order payment window: omitted/false disables it; true uses 30 minutes.
+	 * Custom ttlMs must be a positive integer in the Date range. This is not an HTTP timeout.
+	 */
+	orderExpiration?: boolean | { ttlMs: number };
 }
 
 /** Decimal strings avoid floating-point rounding of payment amounts. */
@@ -43,6 +48,38 @@ export interface PayPalCreateOrder {
 	returnURL: string;
 	cancelURL: string;
 	description?: string;
+	/** Persisted server-owned deadline (Unix milliseconds); required when expiration is enabled. */
+	expiresAt?: number;
+}
+
+/** The current attempt was blocked before payment HTTP; earlier attempts may have charged. */
+export interface PayPalOrderExpiredError extends Error {
+	name: "PayPalOrderExpiredError";
+	code: "PAYPAL_ORDER_EXPIRED";
+	expiresAt: number;
+}
+
+/** Identify a locally blocked payment attempt; this does not establish PayPal payment state. */
+export function isPayPalOrderExpiredError(
+	error: unknown,
+): error is PayPalOrderExpiredError {
+	return (
+		error instanceof Error &&
+		"code" in error &&
+		error.code === "PAYPAL_ORDER_EXPIRED" &&
+		error.name === "PayPalOrderExpiredError" &&
+		"expiresAt" in error &&
+		isTimestamp(error.expiresAt)
+	);
+}
+
+function isTimestamp(value: unknown): value is number {
+	return (
+		typeof value === "number" &&
+		Number.isSafeInteger(value) &&
+		value >= 0 &&
+		value <= 8_640_000_000_000_000
+	);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -152,6 +189,50 @@ export function createPayPalClient(options: PayPalOptions) {
 	) {
 		throw new Error("PayPal clientId, clientSecret and webhookId are required");
 	}
+	const expiration = options.orderExpiration;
+	if (
+		expiration !== undefined &&
+		expiration !== false &&
+		expiration !== true &&
+		(!isRecord(expiration) ||
+			!isTimestamp(expiration.ttlMs) ||
+			expiration.ttlMs === 0)
+	) {
+		throw new Error(
+			"Invalid PayPal orderExpiration: ttlMs must be a positive integer in the Date range",
+		);
+	}
+	const ttlMs =
+		expiration === true
+			? 30 * 60_000
+			: expiration === undefined || expiration === false
+				? undefined
+				: expiration.ttlMs;
+
+	/**
+	 * Check a deadline loaded from trusted application storage using the server clock.
+	 * Explicit deadlines remain enforced even if expiration is disabled for new orders.
+	 * Never use this to classify prior payment attempts or skip reconciliation.
+	 */
+	function assertOrderPayable(expiresAt?: number): void {
+		if (expiresAt === undefined && ttlMs === undefined) return;
+		if (!isTimestamp(expiresAt)) {
+			throw new Error(
+				"PayPal expiresAt must be a persisted server timestamp in Unix milliseconds",
+			);
+		}
+		if (Date.now() >= expiresAt) {
+			const error: PayPalOrderExpiredError = Object.assign(
+				new Error("PayPal business-order payment window has expired"),
+				{
+					name: "PayPalOrderExpiredError" as const,
+					code: "PAYPAL_ORDER_EXPIRED" as const,
+					expiresAt,
+				},
+			);
+			throw error;
+		}
+	}
 	const origin =
 		environment === "live"
 			? "https://api-m.paypal.com"
@@ -170,7 +251,13 @@ export function createPayPalClient(options: PayPalOptions) {
 		return response.json();
 	}
 
-	async function request(path: string, body?: unknown, requestId?: string) {
+	async function request(
+		path: string,
+		body?: unknown,
+		requestId?: string,
+		payment?: { expiresAt?: number },
+	) {
+		if (payment) assertOrderPayable(payment.expiresAt);
 		const token = await readResponse(
 			await fetch(`${origin}/v1/oauth2/token`, {
 				method: "POST",
@@ -191,6 +278,8 @@ export function createPayPalClient(options: PayPalOptions) {
 		) {
 			throw new Error("Invalid PayPal access token response");
 		}
+		// OAuth can outlast the window. Guard the actual payment dispatch as well.
+		if (payment) assertOrderPayable(payment.expiresAt);
 		return readResponse(
 			await fetch(`${origin}${path}`, {
 				method: body === undefined ? "GET" : "POST",
@@ -217,8 +306,14 @@ export function createPayPalClient(options: PayPalOptions) {
 		path: string,
 		body?: unknown,
 		requestId?: string,
+		expiresAt?: number,
 	) {
-		const order = await request(path, body, requestId);
+		const order = await request(
+			path,
+			body,
+			requestId,
+			body === undefined ? undefined : { expiresAt },
+		);
 		if (!isOrder(order)) {
 			throw new Error("Invalid PayPal order response");
 		}
@@ -226,6 +321,23 @@ export function createPayPalClient(options: PayPalOptions) {
 	}
 
 	return {
+		/**
+		 * Calculate once from the server's business-order creation time (Unix milliseconds).
+		 * Persist before contacting PayPal; retries/resumption must reuse the saved result.
+		 * Returns undefined when expiration is disabled. Never derives time from a request.
+		 */
+		calculateOrderExpiresAt(createdAt: number): number | undefined {
+			if (!isTimestamp(createdAt)) {
+				throw new Error("Invalid PayPal business-order createdAt timestamp");
+			}
+			if (ttlMs === undefined) return undefined;
+			const expiresAt = createdAt + ttlMs;
+			if (!isTimestamp(expiresAt)) {
+				throw new Error("PayPal expiresAt exceeds the supported Date range");
+			}
+			return expiresAt;
+		},
+		assertOrderPayable,
 		/** Create a single-unit, no-shipping checkout with a server-owned amount. */
 		async createOrder(input: PayPalCreateOrder): Promise<PayPalOrder> {
 			validateRequestId(input.requestId);
@@ -261,22 +373,29 @@ export function createPayPalClient(options: PayPalOptions) {
 					},
 				},
 				input.requestId,
+				input.expiresAt,
 			);
 		},
 		/** Look up authoritative state before reconciling local payment records. */
 		async getOrder(orderId: string): Promise<PayPalOrder> {
 			return orderRequest(orderPath(orderId));
 		},
-		/** Capture only an owned order; reuse its persisted capture request ID on retry. */
+		/**
+		 * Capture only an owned order; reuse its persisted request ID and deadline on retry.
+		 * Reconcile prior/uncertain captures first. Expiration never cancels an in-flight request.
+		 */
 		async captureOrder(input: {
 			orderId: string;
 			requestId: string;
+			/** Persisted server-owned Unix milliseconds; required when expiration is enabled. */
+			expiresAt?: number;
 		}): Promise<PayPalOrder> {
 			validateRequestId(input.requestId);
 			return orderRequest(
 				`${orderPath(input.orderId)}/capture`,
 				{},
 				input.requestId,
+				input.expiresAt,
 			);
 		},
 		/** Verify through PayPal before trusting a delivery; API failures must be retried. */

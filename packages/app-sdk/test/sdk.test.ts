@@ -48,6 +48,24 @@ describe("SDK native compatibility", () => {
 		}
 	});
 
+	it("exposes PayPal expiration helpers and error types through the SDK", () => {
+		const client = sdkPayPal.createPayPalClient({
+			clientId: "test-client",
+			clientSecret: "test-secret",
+			webhookId: "test-webhook",
+			orderExpiration: true,
+		});
+		expect(client.calculateOrderExpiresAt(0)).toBe(30 * 60 * 1000);
+		expectTypeOf(client.assertOrderPayable).toBeFunction();
+		expectTypeOf<sdkPayPal.PayPalOrderExpiredError>().toEqualTypeOf<nativePayPal.PayPalOrderExpiredError>();
+		expectTypeOf<
+			sdkPayPal.PayPalOrderExpiredError["code"]
+		>().toEqualTypeOf<"PAYPAL_ORDER_EXPIRED">();
+		expect(sdkPayPal.isPayPalOrderExpiredError).toBe(
+			nativePayPal.isPayPalOrderExpiredError,
+		);
+	});
+
 	it("preserves registration, login, session, logout and plugin calls", async () => {
 		const { client, auth, sessionSetter } = await getTestInstance(
 			{ plugins: [sdkPlugins.username()] },
