@@ -17,6 +17,11 @@
     "lint:package": "publint run --strict --pack false"
   },
   "exports": {
+    "./metrics": {
+      "dev-source": "./src/metrics.ts",
+      "types": "./dist/metrics.d.mts",
+      "default": "./dist/metrics.mjs"
+    },
     "./credits": {
       "dev-source": "./src/credits.ts",
       "types": "./dist/credits.d.mts",
@@ -80,6 +85,9 @@
   },
   "typesVersions": {
     "*": {
+      "metrics": [
+        "./dist/metrics.d.mts"
+      ],
       "credits": [
         "./dist/credits.d.mts"
       ],

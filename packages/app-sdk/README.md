@@ -19,6 +19,7 @@ pnpm add ./vendor/auth-sdk.tgz
 | 入口 | 内容 |
 | --- | --- |
 | `@app/auth-sdk/server` | `betterAuth` 和服务端类型 |
+| `@app/auth-sdk/metrics` | `createMetricsHandler` 站点只读统计接口 |
 | `@app/auth-sdk/plugins` | 内置服务端插件 |
 | `@app/auth-sdk/client/plugins` | 内置客户端插件 |
 | `@app/auth-sdk/react` | `createAuthClient`，含 `useSession` |
@@ -36,6 +37,90 @@ pnpm add ./vendor/auth-sdk.tgz
 SDK 不启动 HTTP 服务、不提供页面。密钥与数据库配置留在使用方服务端，数据库表需要预先迁移。PayPal 入口仅供服务端使用，默认沙箱，支持一次性付款，不含自动续费。
 
 PayPal.cn 全球收单的服务端客户端实现在独立的 `@app/paypal` 包中，由 `@app/auth-sdk/paypal` 转发导出 `createPayPalClient`，随完整 SDK 安装包一起分发。配置 `clientId`、`clientSecret`、`webhookId` 后，可以创建订单（`createOrder`）、查询订单（`getOrder`）、确认收款（`captureOrder`）和验证回调（`verifyWebhook`）；正式环境使用 `environment: "live"`。
+
+## SEO-worker 站点统计
+
+`createMetricsHandler` 返回原生 `(request: Request) => Promise<Response>` 处理函数，由网站挂载一个服务端路由，例如 `/internal/metrics`。接口只接受不带查询参数的 GET 请求，通过 `Authorization: Bearer <凭证>` 鉴权，不使用登录 Cookie，不返回用户明细。所有响应设置 `Cache-Control: no-store`；SDK 内部的短期快照缓存不属于 HTTP 缓存。
+
+第一期按独立网站数据库统计。`siteId` 是输出标签，不是租户查询条件；多个网站共用用户库时不能用不同 `siteId` 获取各站用户数，须先提供有明确站点归属过滤的统计实现。
+
+### 环境变量与挂载
+
+| 网站服务端环境变量 | 规则 |
+| --- | --- |
+| `APP_METRICS_ENABLED` | 只有精确字符串 `true` 启用；默认关闭，处理函数返回 404 |
+| `APP_METRICS_SITE_ID` | 启用时必填，1～128 个英文字母、数字、`_` 或 `-` |
+| `APP_METRICS_TOKEN` | 启用时必填，32～256 个英文字母、数字、`_` 或 `-`；独立、密码学安全随机生成的服务凭证 |
+| `APP_METRICS_RATE_LIMIT_PER_MINUTE` | 可选，1～60 的整数，默认 6；限制每分钟已授权请求数，缓存命中也计数 |
+
+凭证仅保存于网站和 SEO-worker 服务端，不使用 `NEXT_PUBLIC_` 等会暴露给浏览器的环境变量，不复用 `BETTER_AUTH_SECRET`。可以通过 `crypto.getRandomValues(new Uint8Array(32))` 生成 32 字节随机数，再编码成 64 位十六进制字符串。只满足长度限制的人工密码不等于随机凭证。轮换时更新网站和 SEO-worker 两侧配置并重新创建处理函数。
+
+启用后无效配置或缺少 `countPaidUsers` 回调会在初始化时抛错；关闭时不会运行统计查询。SDK 显式接收 `env`，不自行读取进程环境；Node.js 可传 `process.env`，Cloudflare Workers 可传服务端环境绑定。
+
+```ts
+// 使用方应用：app/internal/metrics/route.ts
+import { createMetricsHandler } from "@app/auth-sdk/metrics";
+import { auth } from "@/lib/auth";
+import { countPaidUsers } from "@/lib/payment-metrics"; // 应用实现，见下方约定
+
+export const GET = createMetricsHandler({
+  env: process.env,
+  auth,
+  countPaidUsers,
+});
+```
+
+每个网站、每个运行实例只创建一次处理函数并重复使用；在请求内重新创建会重置限流、缓存和并发保护。其他框架将请求交给同一个处理函数并完整返回其 `Response`。
+
+### 指标与付款查询
+
+| 返回字段 | 口径 |
+| --- | --- |
+| `totalUsers` | 认证数据库当前存在的用户总数 |
+| `newUsers7d` | 当前存在且 `createdAt` 落在最近 7 × 24 小时 `[from, to)` 的用户数；不保留已注销用户的历史注册量 |
+| `paidUsersThisMonth` | UTC 当月月初至本次统计时间 `[from, to)` 内已成功付款的去重用户数，由应用付款查询回调提供 |
+
+`countPaidUsers({ from, to, signal })` 是应用提供的异步函数；`from`、`to` 为 `Date`，`signal` 为 `AbortSignal`，返回 `Promise<number>`，结果须为非负安全整数。PostgreSQL 驱动返回字符串计数时，应用需先转换并校验数字。查询须使用参数化条件，按可信付款完成时间限制 `[from, to)`，只统计经过服务端验签、订单归属及金额核验后持久化的成功付款，金额大于零，并按用户 ID 去重。退款政策由该回调决定，必须与后台展示口径一致；例如“本月成功付过款人数”可以保留之后退款的用户，“当前仍有净付款人数”则需排除已全额退款记录。SDK 不创建订单表，也不把试用或有效订阅算成成功付款。
+
+将 `signal` 传给支持取消的查询或下游客户端，并在数据库设置有限的语句执行超时及连接池上限。不要先拉取全部订单或全部用户到应用内计数。
+
+响应包含站点、统计时间和两个准确的统计区间，日期序列化为 ISO 8601 UTC 字符串：
+
+```json
+{
+  "siteId": "my_site",
+  "generatedAt": "2026-10-07T04:00:00.000Z",
+  "timezone": "UTC",
+  "totalUsers": 1200,
+  "newUsers7d": 37,
+  "paidUsersThisMonth": 18,
+  "periods": {
+    "newUsers": {
+      "from": "2026-09-30T04:00:00.000Z",
+      "to": "2026-10-07T04:00:00.000Z"
+    },
+    "paidUsers": {
+      "from": "2026-10-01T00:00:00.000Z",
+      "to": "2026-10-07T04:00:00.000Z"
+    }
+  }
+}
+```
+
+### 限流与服务保护
+
+- 每个处理函数有鉴权前的固定限流：每分钟最多 60 次尝试，错误凭证也计入；通过鉴权后还受默认每分钟 6 次的限制。限额按整个站点处理函数计算，不依据客户端传入的 IP 创建桶。
+- 超限返回 429 和 `Retry-After`。仅保留一份 60 秒统计快照，跨 UTC 月份不复用上月快照；每实例只允许执行一批统计查询，忙碌时返回 503，避免并发请求放大数据库负载。
+- 统计响应最多等待 5 秒。查询失败或超时统一返回 503，退避 60 秒，不返回底层错误或伪造的零值。底层查询尚未结束时继续保留并发锁，防止超时后立即启动新批次；**响应超时不保证数据库查询取消**，数据库语句超时和有限连接池仍须由接入应用配置。
+- 多实例或无服务器部署不能依赖进程内计数实现全站限流。传入 `rateLimitStorage`，使用现有 `BetterAuthRateLimitStorage` 契约的原子 `consume(key, { window, max })` 实现，或在入口网关统一限流。共享存储在每次已授权请求读取缓存或查库之前执行，存储故障返回 503；不能用非原子的读取再写入代替。共享存储不会合并各实例的缓存或并发锁。
+
+公网部署还需在接入网关限制该路由的连接数和请求速率，防止流量在抵达 SDK 前就耗尽服务资源。不同网站使用独立站点 ID、凭证和处理函数，统计凭证不授予任何写入权限。
+
+### SEO-worker 调用约定
+
+SEO-worker 保存 `siteId → HTTPS 接口 URL、服务凭证` 的服务端配置，使用已登记地址发送 `Authorization: Bearer <凭证>`，不从浏览器接受任意目标 URL 或向浏览器返回凭证。建议每 1～5 分钟采集一次或按需刷新；遇到 429/503 遵循 `Retry-After` 退避，保留最后成功结果及其 `generatedAt` 并标明暂时不可用，不把请求失败显示成用户数为零。
+
+SDK 不会自动注册到 SEO-worker、推送数据或创建采集定时任务。SEO-worker 接入只需登记该网站的地址和凭证，再读取上述三个字段。
 
 ## 未付款订单有效期
 

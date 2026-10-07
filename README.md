@@ -48,6 +48,7 @@ SSO、Passkey、SCIM 等独立包的源码和测试仍保留，主 SDK 的打包
 | 导入路径 | 功能 |
 | --- | --- |
 | `@app/auth-sdk/server` | `betterAuth`、认证配置及服务端类型 |
+| `@app/auth-sdk/metrics` | 环境变量控制的站点只读统计接口 `createMetricsHandler` |
 | `@app/auth-sdk/plugins` | 内置服务端插件 |
 | `@app/auth-sdk/client/plugins` | 内置客户端插件 |
 | `@app/auth-sdk/react` | `createAuthClient`、React 会话能力 |
@@ -105,6 +106,42 @@ export const { GET, POST } = toNextJsHandler(auth);
 ```
 
 数据库表需按认证配置和启用的插件预先迁移。SDK 不会自动建表，也不会独立启动 HTTP 服务；由使用方应用挂载认证路由、配置环境变量和管理数据库迁移。
+
+## SEO-worker 站点统计
+
+`@app/auth-sdk/metrics` 提供可选的 `createMetricsHandler`，第一期仅返回当前用户数、最近 7 × 24 小时新增用户数、UTC 本月至今的付费用户数。每个网站使用独立数据库、站点 ID 和服务凭证；`siteId` 只标识返回数据，不会按站点过滤共享用户库。
+
+在接入网站的服务端环境变量中开启，凭证由网站与 SEO-worker 的服务端保存：
+
+```dotenv
+APP_METRICS_ENABLED=true
+APP_METRICS_SITE_ID=my_site
+APP_METRICS_TOKEN=<替换为独立随机生成的服务凭证>
+APP_METRICS_RATE_LIMIT_PER_MINUTE=6
+```
+
+只有 `APP_METRICS_ENABLED` 精确为 `true` 才启用；其他值返回 404。凭证必须是 32～256 个 URL 安全字符，须使用密码学安全随机数生成，不能复用认证密钥或放入前端环境变量。启用后缺少凭证、站点 ID 或付款查询回调会在初始化时抛错。
+
+例如在使用方 Next.js 的 `app/internal/metrics/route.ts` 中挂载：
+
+```ts
+import { createMetricsHandler } from "@app/auth-sdk/metrics";
+import { auth } from "@/lib/auth";
+import { countPaidUsers } from "@/lib/payment-metrics"; // 应用自己的已核验付款查询
+
+// 每个网站、每个运行实例只创建一次，不能放到请求处理函数中重建。
+export const GET = createMetricsHandler({
+  env: process.env,
+  auth,
+  countPaidUsers,
+});
+```
+
+SEO-worker 使用 `Authorization: Bearer <凭证>` 请求已登记的 HTTPS 接口地址，不带查询参数。SDK 统计认证用户表；应用的 `countPaidUsers` 必须查询已核验、成功且金额大于零的付款记录，并按用户去重，不能使用有效订阅数代替付费人数。
+
+接口默认每实例每分钟最多接收 60 次鉴权尝试、6 次已授权请求，包含缓存读取；返回 429 时携带 `Retry-After`。统计快照缓存 60 秒，每实例最多执行一批统计查询，响应超时为 5 秒；查询失败返回 503 并退避 60 秒，不用 0 掩盖故障。多实例或无服务器部署需配置共享原子限流存储或网关限流，数据库还须设置查询超时及连接池上限；响应超时不能保证底层数据库查询取消。
+
+完整指标口径、环境变量、共享限流及 SEO-worker 接入约定见 [SDK 站点统计说明](./packages/app-sdk/README.md#seo-worker-站点统计)。
 
 ## 通用套餐与订阅
 
