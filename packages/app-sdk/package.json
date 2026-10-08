@@ -17,6 +17,16 @@
     "lint:package": "publint run --strict --pack false"
   },
   "exports": {
+    "./business": {
+      "dev-source": "./src/business.ts",
+      "types": "./dist/business.d.mts",
+      "default": "./dist/business.mjs"
+    },
+    "./business/client": {
+      "dev-source": "./src/business/client.ts",
+      "types": "./dist/business/client.d.mts",
+      "default": "./dist/business/client.mjs"
+    },
     "./metrics": {
       "dev-source": "./src/metrics.ts",
       "types": "./dist/metrics.d.mts",
@@ -85,6 +95,12 @@
   },
   "typesVersions": {
     "*": {
+      "business": [
+        "./dist/business.d.mts"
+      ],
+      "business/client": [
+        "./dist/business/client.d.mts"
+      ],
       "metrics": [
         "./dist/metrics.d.mts"
       ],
@@ -127,6 +143,7 @@
     }
   },
   "dependencies": {
+    "@app/business": "workspace:^",
     "@app/credits": "workspace:^",
     "@app/paypal": "workspace:^",
     "@app/subscription": "workspace:^"

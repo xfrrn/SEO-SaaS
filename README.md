@@ -20,6 +20,7 @@ pnpm typecheck
 | `packages/app-sdk` | 应用接入入口，统一导出认证、订阅、credits 及支付功能 |
 | `packages/subscription` | 通用套餐、订阅记录和权益查询，包名为 `@app/subscription` |
 | `packages/credits` | 独立积分余额、发放、扣减和流水插件，包名为 `@app/credits` |
+| `packages/business` | 组合业务插件：商品管理、订单、付款履约、人工调整、退款后处理及后台查询 |
 | `packages/paypal` | 独立 PayPal 客户端及其测试，包名为 `@app/paypal` |
 | `packages/better-auth` | 认证服务、客户端和内置插件 |
 | `packages/core` | 公共类型和底层能力 |
@@ -35,7 +36,7 @@ pnpm typecheck
 pnpm pack:sdk
 ```
 
-产物为 **`dist/auth-sdk.tgz`**。其中包含本仓库构建的认证核心、Kysely/内存适配器、通用订阅、credits、Stripe 及 PayPal 包，保留你的本地修改。复制到使用方项目的 `vendor/` 后安装：
+产物为 **`dist/auth-sdk.tgz`**。其中包含本仓库构建的认证核心、Kysely/内存适配器、通用订阅、credits、business、Stripe 及 PayPal 包，保留你的本地修改。复制到使用方项目的 `vendor/` 后安装：
 
 ```bash
 pnpm add ./vendor/auth-sdk.tgz
@@ -57,6 +58,8 @@ SSO、Passkey、SCIM 等独立包的源码和测试仍保留，主 SDK 的打包
 | `@app/auth-sdk/subscription/client` | 通用订阅客户端插件 `subscriptionClient` |
 | `@app/auth-sdk/credits` | credits 服务端插件 `credits` |
 | `@app/auth-sdk/credits/client` | credits 客户端插件 `creditsClient` |
+| `@app/auth-sdk/business` | 组合业务插件 `business`，管理接口及可信付款回调入口 |
+| `@app/auth-sdk/business/client` | 组合业务客户端插件 `businessClient` |
 | `@app/auth-sdk/stripe` | Stripe 服务端插件 |
 | `@app/auth-sdk/stripe/client` | Stripe 客户端插件 |
 | `@app/auth-sdk/paypal` | PayPal 订单、收款和 webhook 验签 |
@@ -143,7 +146,37 @@ SEO-worker 使用 `Authorization: Bearer <凭证>` 请求已登记的 HTTPS 接�
 
 完整指标口径、环境变量、共享限流及 SEO-worker 接入约定见 [SDK 站点统计说明](./packages/app-sdk/README.md#seo-worker-站点统计)。
 
+## 组合业务与后台接口
+
+基础能力继续由现有插件提供，只有 `business` 是新插件。接入应用启用：
+
+```ts
+import { admin } from "@app/auth-sdk/plugins";
+import { subscription } from "@app/auth-sdk/subscription";
+import { credits } from "@app/auth-sdk/credits";
+import { business } from "@app/auth-sdk/business";
+import { paymentProviders } from "./payment-providers";
+
+// 加到 betterAuth 的 plugins 数组；数据库迁移须包含全部启用插件。
+const plugins = [
+  admin({ auditLog: true }),
+  subscription({ catalog: true }),
+  credits(),
+  business({ providers: paymentProviders }),
+];
+```
+
+`paymentProviders` 将网站现有支付集成适配到 `BusinessPaymentProvider`：创建结账、服务端核验已完成付款、可选的已完成退款核验。插件不提供新的自动扣款或发起退款接口。客户端启用 `businessClient()` 后调用 `/business/*`；管理员接口重新读取可信会话，默认只允许 Admin 配置的管理员，可用 `authorize` 逐操作授权。
+
+组合写入要求真实事务和唯一约束。本仓库直接连接的 PostgreSQL、SQLite 可用；内存适配器和没有交互事务的 D1 不支持该组合插件。数据库由网站提供，插件不独立启动服务。会员、积分、订单状态和成功审计在同一事务提交；可信付款记录先保存，发货失败保留已付款状态，管理端可安全重试。
+
+支持购买发货、实际续费付款后的赠送、积分批次到期、人工调整、退款后的权益处理。全额退款回收对应批次剩余额度；部分退款和已消费额度标记人工处理，不自动倒扣其他积分。概览的付费人数只统计经过此业务插件确认的订单，包含随后退款的付款，不自动汇总外部历史订单。
+
+完整接口、支付适配要求和迁移约定见 [SDK 组合业务说明](./packages/app-sdk/README.md#组合业务与后台接口)。当前仍不包含 Dashboard 页面，待接入指定模板。
+
 ## 通用套餐与订阅
+
+商品目录可通过 `subscription({ catalog: true })` 开启，支持纯积分、纯会员和会员加积分。商品以不可变版本保存；修改、上下架均创建新版本，旧订单和会员继续引用购买时的版本。通过 `createProductService(adapter)` 或业务插件的管理接口编辑，现有 `subscription({ plans })` 配置方式保持兼容。
 
 `packages/subscription` 管理渠道无关的套餐定义、订阅记录和有效期查询。它不负责创建支付订单、自动扣款或用量计量；套餐的 `limits` 由业务代码执行。仅使用通用订阅时，不需要 Stripe 或 PayPal 配置。
 
@@ -159,7 +192,7 @@ const plans = [
 // betterAuth({ ...其他认证配置, plugins: [subscription({ plans })] })
 ```
 
-`plans` 也可以是返回套餐数组的异步函数；套餐通过配置提供，没有套餐增删改 HTTP 接口。浏览器客户端可将从 `@app/auth-sdk/subscription/client` 导入的 `subscriptionClient()` 加入客户端 `plugins`。
+`plans` 也可以是返回套餐数组的异步函数；未启用 `catalog` 时，套餐仍通过配置提供。底层商品写入只供可信服务端调用；面板使用业务插件鉴权后的编辑接口。浏览器客户端可将从 `@app/auth-sdk/subscription/client` 导入的 `subscriptionClient()` 加入客户端 `plugins`。
 
 服务端查询需要当前请求的会话头：
 
@@ -261,7 +294,7 @@ const { entries, nextCursor } = await auth.api.listCreditsLedger({
 
 查询默认只允许当前用户；查询组织等其他账户时传 `query: { referenceId }`，并配置 `credits({ authorizeReference })` 校验权限。浏览器可在客户端配置中加入从 `@app/auth-sdk/credits/client` 导入的 `creditsClient()`，再调用 `client.credits.balance()` 或 `client.credits.ledger({ query: { limit: 20 } })`。
 
-额度默认永久有效并累积。包月套餐可在每期付款确认后发放，以已验证账单或业务周期的稳定 ID 作为 key；套餐中的 `limits.monthlyCredits` 只是自定义配置，不会自动发放。自动扣款、定时发放、到期清零和结转规则由业务层按需接入。
+额度默认永久有效并累积；发放时可传 `source` 和绝对日期 `expiresAt`。消费先使用最早到期批次；读取余额、流水或写入时追加过期记录，过期积分不可消费。`revokeCreditsGrant` 按原发放 key 回收该批次剩余有效积分，不会扣其他批次；已消费或已过期部分返回 `unavailable`。历史无期限积分仍永久有效。套餐中的 `limits.monthlyCredits` 不会自动发放；本次不提供定时发放、年费按月赠送或新的支付渠道操作。
 
 流水只追加，余额随流水保存；SQL 唯一约束负责串行化同一账户的并发写入并避免重复记账。插件要求数据库迁移包含这些约束，支持本项目的 PostgreSQL/Kysely 接入，不支持内存适配器。不要直接修改或删除流水。额度操作不与外部业务任务共同提交；任务失败需要返还时，用新的稳定 key 调用 `grantCredits` 记录补偿。
 

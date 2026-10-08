@@ -10,9 +10,27 @@ import { APIError } from "better-auth";
 import { createAuthEndpoint, sessionMiddleware } from "better-auth/api";
 import { mergeSchema } from "better-auth/db";
 import * as z from "zod";
-import { createProviderSubscriptionSchema } from "./schema";
-import type { Subscription, SubscriptionPlans } from "./types";
-import { isSubscriptionActive, resolvePlans } from "./utils";
+import {
+	createProductService,
+	publishProductSchema,
+	saveProductSchema,
+} from "./product";
+import {
+	createProductSchema,
+	createProviderSubscriptionSchema,
+} from "./schema";
+import { createSubscriptionService, syncSubscriptionSchema } from "./service";
+import type { SubscriptionPlans } from "./types";
+
+export type { Product, SaveProductInput } from "./product";
+export {
+	createProductService,
+	productPlanName,
+	publishProductSchema,
+	saveProductSchema,
+} from "./product";
+export type { SubscriptionSyncInput } from "./service";
+export { createSubscriptionService, syncSubscriptionSchema } from "./service";
 
 export type {
 	Subscription,
@@ -26,17 +44,24 @@ export {
 } from "./utils";
 
 /** Configure plans, ownership authorization, and shared database field mappings. */
-export interface SubscriptionOptions {
-	plans: SubscriptionPlans;
+interface SubscriptionBaseOptions {
 	/** Authorize reads for an organization or reference other than the current user. */
 	authorizeReference?: (
 		data: { user: User; session: Session; referenceId: string },
 		ctx: GenericEndpointContext,
 	) => boolean | Promise<boolean>;
 	schema?: InferOptionSchema<
-		ReturnType<typeof createProviderSubscriptionSchema>
+		ReturnType<typeof createProviderSubscriptionSchema> &
+			ReturnType<typeof createProductSchema>
 	>;
 }
+
+/** Supply configured plans, or explicitly enable the persistent product catalog. */
+export type SubscriptionOptions = SubscriptionBaseOptions &
+	(
+		| { plans: SubscriptionPlans; catalog?: boolean }
+		| { plans?: SubscriptionPlans; catalog: true }
+	);
 
 declare module "@better-auth/core" {
 	interface BetterAuthPluginRegistry<AuthOptions, Options> {
@@ -45,105 +70,18 @@ declare module "@better-auth/core" {
 }
 
 const identifier = z.string().trim().min(1).max(255);
-const syncBody = z
-	.object({
-		provider: z
-			.string()
-			.min(1)
-			.max(255)
-			.regex(/^[a-z][a-z0-9_-]*$/),
-		providerSubscriptionId: identifier,
-		providerCustomerId: identifier.nullable().optional(),
-		referenceId: identifier,
-		plan: identifier,
-		status: z.enum([
-			"active",
-			"canceled",
-			"incomplete",
-			"incomplete_expired",
-			"past_due",
-			"paused",
-			"trialing",
-			"unpaid",
-		]),
-		periodStart: z.date(),
-		periodEnd: z.date(),
-		revision: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
-		trialStart: z.date().nullable().optional(),
-		trialEnd: z.date().nullable().optional(),
-		cancelAtPeriodEnd: z.boolean().optional(),
-		cancelAt: z.date().nullable().optional(),
-		canceledAt: z.date().nullable().optional(),
-		endedAt: z.date().nullable().optional(),
-		seats: z
-			.number()
-			.int()
-			.min(0)
-			.max(Number.MAX_SAFE_INTEGER)
-			.nullable()
-			.optional(),
-		billingInterval: z
-			.enum(["day", "week", "month", "year"])
-			.nullable()
-			.optional(),
-	})
-	.refine((body) => body.periodStart < body.periodEnd, {
-		message: "periodEnd must be after periodStart",
-		path: ["periodEnd"],
-	})
-	.refine(
-		(body) =>
-			!body.trialStart || !body.trialEnd || body.trialStart < body.trialEnd,
-		{ message: "trialEnd must be after trialStart", path: ["trialEnd"] },
-	);
-
-function publicSubscription(value: Subscription) {
-	return {
-		id: value.id,
-		plan: value.plan,
-		referenceId: value.referenceId,
-		status: value.status,
-		periodStart: value.periodStart,
-		periodEnd: value.periodEnd,
-		trialStart: value.trialStart,
-		trialEnd: value.trialEnd,
-		cancelAtPeriodEnd: value.cancelAtPeriodEnd,
-		cancelAt: value.cancelAt,
-		canceledAt: value.canceledAt,
-		endedAt: value.endedAt,
-		seats: value.seats,
-		billingInterval: value.billingInterval,
-		provider: value.provider,
-	};
-}
 
 /** Manage common subscription state; payment collection remains in provider packages. */
 export function subscription(options: SubscriptionOptions) {
+	if (!options.plans && !options.catalog)
+		throw new Error("Configure subscription plans or enable catalog");
 	const schema = mergeSchema(
-		createProviderSubscriptionSchema(),
+		{
+			...createProviderSubscriptionSchema(),
+			...(options.catalog ? createProductSchema() : {}),
+		},
 		options.schema,
 	);
-
-	async function getPlans() {
-		const plans = await resolvePlans(options.plans);
-		const names = new Set<string>();
-		for (const plan of plans) {
-			const name = plan.name.trim().toLowerCase();
-			if (
-				!name ||
-				plan.name !== plan.name.trim() ||
-				plan.name.length > 255 ||
-				names.has(name)
-			) {
-				throw new APIError("BAD_REQUEST", {
-					message:
-						"Subscription plan names must be non-empty, unique, at most 255 characters, and have no leading or trailing whitespace",
-				});
-			}
-			names.add(name);
-		}
-		return plans;
-	}
 
 	return {
 		id: "subscription",
@@ -176,11 +114,44 @@ export function subscription(options: SubscriptionOptions) {
 			}
 		},
 		endpoints: {
+			saveSubscriptionProduct: createAuthEndpoint.serverOnly(
+				{
+					method: "POST",
+					metadata: { SERVER_ONLY: true },
+					body: saveProductSchema,
+				},
+				async (ctx) => {
+					if (!options.catalog)
+						throw new APIError("BAD_REQUEST", {
+							message: "Product catalog is disabled",
+						});
+					return createProductService(ctx.context.adapter).save(ctx.body);
+				},
+			),
+			publishSubscriptionProduct: createAuthEndpoint.serverOnly(
+				{
+					method: "POST",
+					metadata: { SERVER_ONLY: true },
+					body: publishProductSchema,
+				},
+				async (ctx) => {
+					if (!options.catalog)
+						throw new APIError("BAD_REQUEST", {
+							message: "Product catalog is disabled",
+						});
+					return createProductService(ctx.context.adapter).setPublished(
+						ctx.body,
+					);
+				},
+			),
 			listSubscriptionPlans: createAuthEndpoint(
 				"/subscriptions/plans",
 				{ method: "GET", requireHeaders: true, use: [sessionMiddleware] },
 				async (ctx) => {
-					const plans = await getPlans();
+					const plans = await createSubscriptionService(
+						ctx.context.adapter,
+						options,
+					).plans();
 					return ctx.json(
 						plans.map(({ name, limits, group }) => ({ name, limits, group })),
 					);
@@ -220,115 +191,25 @@ export function subscription(options: SubscriptionOptions) {
 							message: "Not authorized to read these subscriptions",
 						});
 					}
-					const plans = await getPlans();
-					const where = [{ field: "referenceId", value: referenceId }];
-					const count = await ctx.context.adapter.count({
-						model: "subscription",
-						where,
-					});
-					const subscriptions = count
-						? await ctx.context.adapter.findMany<Subscription>({
-								model: "subscription",
-								where,
-								limit: count,
-							})
-						: [];
-					const now = new Date();
 					return ctx.json(
-						subscriptions.flatMap((value) => {
-							const plan = plans.find(
-								(plan) => plan.name.toLowerCase() === value.plan.toLowerCase(),
-							);
-							const active = !!plan && isSubscriptionActive(value, now);
-							if ((ctx.query?.activeOnly ?? true) && !active) return [];
-							return [
-								{
-									...publicSubscription(value),
-									limits: active ? plan?.limits : undefined,
-								},
-							];
+						await createSubscriptionService(ctx.context.adapter, options).list({
+							referenceId,
+							activeOnly: ctx.query?.activeOnly ?? true,
 						}),
 					);
 				},
 			),
 			/** Synchronize only after trusted server code has verified the payment provider. */
 			syncSubscription: createAuthEndpoint.serverOnly(
-				{ method: "POST", metadata: { SERVER_ONLY: true }, body: syncBody },
+				{
+					method: "POST",
+					metadata: { SERVER_ONLY: true },
+					body: syncSubscriptionSchema,
+				},
 				async (ctx) => {
-					const body = ctx.body;
-					const plans = await getPlans();
-					const plan = plans.find(
-						(plan) => plan.name.toLowerCase() === body.plan.toLowerCase(),
+					return createSubscriptionService(ctx.context.adapter, options).sync(
+						ctx.body,
 					);
-					if (!plan) {
-						throw new APIError("BAD_REQUEST", {
-							message: "Unknown subscription plan",
-						});
-					}
-					const syncKey = JSON.stringify([
-						body.provider,
-						body.providerSubscriptionId,
-					]);
-					const adapter = ctx.context.adapter;
-					const findByKey = () =>
-						adapter.findOne<Subscription>({
-							model: "subscription",
-							where: [{ field: "syncKey", value: syncKey }],
-						});
-					const data = { ...body, plan: plan.name, syncKey };
-					for (let attempt = 0; attempt < 5; attempt++) {
-						const current =
-							(await findByKey()) ??
-							(await adapter.findOne<Subscription>({
-								model: "subscription",
-								where: [
-									{ field: "provider", value: body.provider },
-									{
-										field: "providerSubscriptionId",
-										value: body.providerSubscriptionId,
-									},
-								],
-							}));
-						if (current) {
-							if (current.referenceId !== body.referenceId) {
-								throw new APIError("CONFLICT", {
-									message: "A subscription cannot change its referenceId",
-								});
-							}
-							if (
-								current.revision != null &&
-								current.revision >= body.revision
-							) {
-								return { subscription: current, applied: false };
-							}
-							const updated = await adapter.updateMany({
-								model: "subscription",
-								where: [
-									{ field: "id", value: current.id },
-									{ field: "revision", value: current.revision ?? null },
-								],
-								update: data,
-							});
-							if (updated) {
-								const saved = await findByKey();
-								if (saved) return { subscription: saved, applied: true };
-							}
-						} else {
-							try {
-								const saved = await adapter.create<typeof data, Subscription>({
-									model: "subscription",
-									data,
-								});
-								return { subscription: saved, applied: true };
-							} catch (error) {
-								if (!(await findByKey())) throw error;
-							}
-						}
-					}
-					throw new APIError("CONFLICT", {
-						message:
-							"Subscription changed concurrently; retry the synchronization",
-					});
 				},
 			),
 		},

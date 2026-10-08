@@ -1,3 +1,5 @@
+import * as sdkBusiness from "@app/auth-sdk/business";
+import * as sdkBusinessClient from "@app/auth-sdk/business/client";
 import * as sdkClientPlugins from "@app/auth-sdk/client/plugins";
 import * as sdkCredits from "@app/auth-sdk/credits";
 import * as sdkCreditsClient from "@app/auth-sdk/credits/client";
@@ -10,6 +12,8 @@ import * as sdkStripe from "@app/auth-sdk/stripe";
 import * as sdkStripeClient from "@app/auth-sdk/stripe/client";
 import * as sdkSubscription from "@app/auth-sdk/subscription";
 import * as sdkSubscriptionClient from "@app/auth-sdk/subscription/client";
+import * as nativeBusiness from "@app/business";
+import * as nativeBusinessClient from "@app/business/client";
 import * as nativeCredits from "@app/credits";
 import * as nativeCreditsClient from "@app/credits/client";
 import * as nativePayPal from "@app/paypal";
@@ -28,6 +32,8 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 describe("SDK native compatibility", () => {
 	it("re-exports the original values from every entrypoint", () => {
 		for (const [sdk, native] of [
+			[sdkBusiness, nativeBusiness],
+			[sdkBusinessClient, nativeBusinessClient],
 			[sdkServer, nativeServer],
 			[sdkReact, nativeReact],
 			[sdkNextJS, nativeNextJS],

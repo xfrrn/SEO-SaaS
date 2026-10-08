@@ -16,6 +16,7 @@
     "../stripe/test/_factories.ts"
   ],
   "references": [
+    { "path": "../business/tsconfig.json" },
     {
       "path": "../credits/tsconfig.json"
     },

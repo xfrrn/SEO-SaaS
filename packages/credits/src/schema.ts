@@ -45,6 +45,11 @@ export function createCreditsSchema() {
 				},
 				idempotencyKey: { type: "string", required: true },
 				reason: { type: "string", required: false },
+				kind: { type: "string", required: false },
+				source: { type: "string", required: false },
+				expiresAt: { type: "date", required: false },
+				batchState: { type: "string", required: false, returned: false },
+				revokedGrantKey: { type: "string", required: false, returned: false },
 				createdAt: { type: "date", required: true },
 			},
 			indexes: [

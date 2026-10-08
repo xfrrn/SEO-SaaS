@@ -15,6 +15,8 @@ export interface SessionWithImpersonatedBy extends Session {
 }
 
 export interface AdminOptions {
+	/** Persist append-only admin request audit events. Requires a schema migration. Defaults to false. */
+	auditLog?: boolean | undefined;
 	/**
 	 * The default role for a user
 	 *

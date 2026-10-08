@@ -3,6 +3,9 @@
   "include": ["./*.ts", "./*.js"],
   "references": [
     {
+      "path": "./packages/business/tsconfig.json"
+    },
+    {
       "path": "./packages/credits/tsconfig.json"
     },
     {

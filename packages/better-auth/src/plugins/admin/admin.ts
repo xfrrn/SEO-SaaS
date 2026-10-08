@@ -5,6 +5,11 @@ import { mergeSchema } from "../../db/schema";
 import { getEndpointResponse } from "../../utils/plugin-helper";
 import { PACKAGE_VERSION } from "../../version";
 import { defaultRoles } from "./access";
+import {
+	adminAuditSchema,
+	createAdminAuditHooks,
+	listAuditLogs,
+} from "./audit";
 import { ADMIN_ERROR_CODES } from "./error-codes";
 import {
 	adminUpdateUser,
@@ -39,6 +44,8 @@ declare module "@better-auth/core" {
 }
 
 export const admin = <O extends AdminOptions>(options?: O | undefined) => {
+	const auditHooks = options?.auditLog ? createAdminAuditHooks() : {};
+	const auditEndpoints = { listAuditLogs: listAuditLogs(options ?? {}) };
 	const opts = {
 		...(options || {}),
 		defaultRole: options?.defaultRole ?? "user",
@@ -132,7 +139,9 @@ export const admin = <O extends AdminOptions>(options?: O | undefined) => {
 			};
 		},
 		hooks: {
+			before: auditHooks.before,
 			after: [
+				...(auditHooks.after ?? []),
 				{
 					matcher(context) {
 						return context.path === "/list-sessions";
@@ -154,6 +163,11 @@ export const admin = <O extends AdminOptions>(options?: O | undefined) => {
 			],
 		},
 		endpoints: {
+			...((options?.auditLog ? auditEndpoints : {}) as O extends {
+				auditLog: true;
+			}
+				? typeof auditEndpoints
+				: {}),
 			setRole: setRole(opts),
 			getUser: getUser(opts),
 			createUser: createUser(opts),
@@ -171,7 +185,10 @@ export const admin = <O extends AdminOptions>(options?: O | undefined) => {
 			userHasPermission: userHasPermission(opts as O),
 		},
 		$ERROR_CODES: ADMIN_ERROR_CODES,
-		schema: mergeSchema(schema, opts.schema),
+		schema: mergeSchema(
+			options?.auditLog ? { ...schema, ...adminAuditSchema } : schema,
+			opts.schema,
+		),
 		options: options as NoInfer<O>,
 	} satisfies BetterAuthPlugin;
 };

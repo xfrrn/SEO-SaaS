@@ -1,6 +1,7 @@
 import { createAccessControl } from "../../access";
 
 export const defaultStatements = {
+	audit: ["list"],
 	user: [
 		"create",
 		"list",
@@ -20,6 +21,7 @@ export const defaultStatements = {
 export const defaultAc = createAccessControl(defaultStatements);
 
 export const adminAc = defaultAc.newRole({
+	audit: ["list"],
 	user: [
 		"create",
 		"list",
@@ -36,6 +38,7 @@ export const adminAc = defaultAc.newRole({
 });
 
 export const userAc = defaultAc.newRole({
+	audit: [],
 	user: [],
 	session: [],
 });

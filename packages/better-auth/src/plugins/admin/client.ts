@@ -10,6 +10,8 @@ import { hasPermission } from "./has-permission";
 export * from "./error-codes";
 
 export interface AdminClientOptions {
+	/** Infer the audit listing endpoint when enabled on the server. */
+	auditLog?: boolean | undefined;
 	ac?: AccessControl | undefined;
 	roles?:
 		| {
@@ -46,6 +48,7 @@ export const adminClient = <O extends AdminClientOptions>(
 		version: PACKAGE_VERSION,
 		$InferServerPlugin: {} as ReturnType<
 			typeof admin<{
+				auditLog: O["auditLog"];
 				ac: O["ac"] extends AccessControl
 					? O["ac"]
 					: AccessControl<DefaultStatements>;
