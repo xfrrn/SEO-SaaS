@@ -1,6 +1,6 @@
 # Auth SDK
 
-基于 Better Auth 的可修改、可测试 SDK。对外使用 `@app/auth-sdk`，保留原生认证、插件、数据库适配器和支付实现。此仓库只提供 SDK 源码和开发工具，不包含前端网站或管理后台。
+基于 Better Auth 的可修改、可测试 SDK。对外使用 `@app/auth-sdk`，保留原生认证、插件、数据库适配器和支付实现。仓库同时提供 `apps/dashboard` 管理后台，使用已有 SDK 管理用户、套餐、订单、会员、积分和操作记录。
 
 ## 开发
 
@@ -17,6 +17,7 @@ pnpm typecheck
 
 | 路径 | 用途 |
 | --- | --- |
+| `apps/dashboard` | 按指定模板裁剪的 Next.js 管理后台，直接调用 Admin 和 Business 客户端 |
 | `packages/app-sdk` | 应用接入入口，统一导出认证、订阅、credits 及支付功能 |
 | `packages/subscription` | 通用套餐、订阅记录和权益查询，包名为 `@app/subscription` |
 | `packages/credits` | 独立积分余额、发放、扣减和流水插件，包名为 `@app/credits` |
@@ -29,6 +30,21 @@ pnpm typecheck
 | 其他 `packages/*` | Stripe、SSO、Passkey 等独立功能包 |
 | `test`、各包内的测试 | SDK 行为和类型回归测试 |
 | `scripts` | 单包打包脚本及其测试 |
+
+## 管理后台
+
+`apps/dashboard` 保留指定模板的排版、配色、横向 Tabs、图表与弹窗动效，连接真实认证和业务接口。可独立启动，也可将页面及组件接入已有网站的 `/admin`；后台风格与网站首页独立。
+
+在仓库根目录构建 SDK 后，复制 `apps/dashboard/.env.example` 为 `apps/dashboard/.env.local`，配置密钥、数据库和初始化管理员，开发来源填写 `http://127.0.0.1:3001`，再执行：
+
+```bash
+pnpm dashboard:setup
+pnpm dashboard:dev
+```
+
+访问 `http://127.0.0.1:3001`。`dashboard:setup` 会迁移数据库并创建指定的新管理员；请先核对配置的数据库。开发可显式使用本地 SQLite，生产使用 PostgreSQL。接入已有网站时，从 `apps/dashboard/lib/auth.ts` 的 `getAuth()` 和 `lib/auth-client.ts` 开始，复用网站同一个认证实例、数据库和 `/api/auth` 路由，保留服务端权限校验。
+
+支付渠道需要由网站配置，面板不会模拟收款或发起退款。完整配置、初始化、网站接入及测试步骤见 [Dashboard 使用说明](./apps/dashboard/README.md)。Dashboard 源码单独位于工作区，不包含在 `dist/auth-sdk.tgz` 中。
 
 ## 打包并接入其他项目
 
@@ -172,7 +188,7 @@ const plugins = [
 
 支持购买发货、实际续费付款后的赠送、积分批次到期、人工调整、退款后的权益处理。全额退款回收对应批次剩余额度；部分退款和已消费额度标记人工处理，不自动倒扣其他积分。概览的付费人数只统计经过此业务插件确认的订单，包含随后退款的付款，不自动汇总外部历史订单。
 
-完整接口、支付适配要求和迁移约定见 [SDK 组合业务说明](./packages/app-sdk/README.md#组合业务与后台接口)。当前仍不包含 Dashboard 页面，待接入指定模板。
+完整接口、支付适配要求和迁移约定见 [SDK 组合业务说明](./packages/app-sdk/README.md#组合业务与后台接口)，已接入这些接口的页面见 [Dashboard](./apps/dashboard/README.md)。
 
 ## 通用套餐与订阅
 

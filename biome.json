@@ -59,6 +59,10 @@
   },
   "overrides": [
     {
+      "includes": ["apps/dashboard/**/*.css"],
+      "css": { "parser": { "tailwindDirectives": true } }
+    },
+    {
       "includes": ["**/*.json"],
       "formatter": {
         "indentStyle": "space",
@@ -118,6 +122,7 @@
       "!**/coverage",
       "!**/build",
       "!**/.cache",
+      "!**/.next",
       "!**/.tsc",
       "!**/.tmp",
       "!**/.claude/worktrees/**"

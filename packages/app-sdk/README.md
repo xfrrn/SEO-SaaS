@@ -36,9 +36,17 @@ pnpm add ./vendor/auth-sdk.tgz
 
 服务端使用 `betterAuth({ database, secret, baseURL, ... })` 配置认证，再将请求交给 `auth.handler(request)`。会话检查必须传当前请求头：`auth.api.getSession({ headers: request.headers })`。
 
-SDK 不启动 HTTP 服务、不提供页面。密钥与数据库配置留在使用方服务端，数据库表需要预先迁移。PayPal 入口仅供服务端使用，默认沙箱，支持一次性付款，不含自动续费。
+SDK 包本身不启动 HTTP 服务，管理页面由仓库中的 `apps/dashboard` 应用提供。密钥与数据库配置留在使用方服务端，数据库表需要预先迁移。PayPal 入口仅供服务端使用，默认沙箱，支持一次性付款，不含自动续费。
 
 PayPal.cn 全球收单的服务端客户端实现在独立的 `@app/paypal` 包中，由 `@app/auth-sdk/paypal` 转发导出 `createPayPalClient`，随完整 SDK 安装包一起分发。配置 `clientId`、`clientSecret`、`webhookId` 后，可以创建订单（`createOrder`）、查询订单（`getOrder`）、确认收款（`captureOrder`）和验证回调（`verifyWebhook`）；正式环境使用 `environment: "live"`。
+
+## Dashboard 接入
+
+仓库中的 [apps/dashboard](../../apps/dashboard/README.md) 是基于指定模板的 Next.js 管理后台，保留原排版、配色、横向 Tabs、图表和弹窗动效，包含概览、用户与会话、套餐、订单、会员、积分和操作记录。它使用 `@app/auth-sdk/react`、`adminClient()` 与 `businessClient()` 调用真实接口；页面源码不随 `auth-sdk.tgz` 分发。
+
+本地从仓库根目录运行 `pnpm build:sdk`，复制 `apps/dashboard/.env.example` 为 `apps/dashboard/.env.local`，填写密钥、数据库、初始管理员及 `BETTER_AUTH_URL=http://127.0.0.1:3001`，然后执行 `pnpm dashboard:setup` 和 `pnpm dashboard:dev`。初始化命令会迁移表并创建新管理员，访问地址为 `http://127.0.0.1:3001`；具体配置和生产数据库要求见应用说明。
+
+迁入已有网站时，复用 `apps/dashboard/components` 中的面板，将 `apps/dashboard/lib/auth.ts` 的 `getAuth()` 接到网站现有认证实例，在 `lib/auth-client.ts` 复用同源认证路由，并为该实例启用 `admin({ auditLog: true })`、`subscription({ catalog: true })`、`credits()` 和 `business({ providers })`。管理员和网站用户共用同一数据库，已有 `/api/auth` 路由无需重复创建。保留网站原有注册策略和服务端权限校验；支付适配器、付款及退款核验仍由网站可信服务端配置。
 
 ## SEO-worker 站点统计
 
@@ -309,7 +317,7 @@ async function handlePayPalWebhook(request: Request) {
 
 ## 组合业务与后台接口
 
-`business` 是一层可选组合插件，复用现有认证、Admin、商品目录、订阅和积分能力。它提供网站的购买、订单履约、查询及管理员 API，当前不包含 Dashboard 页面。插件不会自动把 PayPal/Stripe 客户端接成完整收款流程，支付渠道仍由网站配置。
+`business` 是一层可选组合插件，复用现有认证、Admin、商品目录、订阅和积分能力。它提供网站的购买、订单履约、查询及管理员 API；仓库的 [Dashboard](../../apps/dashboard/README.md) 已接入管理接口。插件不会自动把 PayPal/Stripe 客户端接成完整收款流程，支付渠道仍由网站配置。
 
 ### 启用与迁移
 
