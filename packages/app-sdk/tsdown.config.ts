@@ -4,6 +4,8 @@ export default defineConfig({
 	dts: { build: true, incremental: true },
 	format: ["esm"],
 	entry: [
+		"./src/monitor.ts",
+		"./src/monitor/client.ts",
 		"./src/business.ts",
 		"./src/business/client.ts",
 		"./src/metrics.ts",

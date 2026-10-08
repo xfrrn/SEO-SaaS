@@ -1,5 +1,6 @@
 import type { Product } from "@app/subscription";
 import type { Session, User } from "better-auth";
+import type { MonitorOptions } from "./monitor";
 
 /** JSON-persisted responses preserve dates as ISO strings, including on idempotent replay. */
 export type BusinessJSON<T> = T extends Date
@@ -87,10 +88,14 @@ export type BusinessPermission =
 	| "credits:adjust"
 	| "membership:adjust"
 	| "audit:read"
+	| "monitor:read"
+	| "monitor:retry"
 	| "metrics:read";
 
 /** Configure existing payment integrations and optional delegated operator permissions. */
 export interface BusinessOptions {
+	/** Optional durable signup/payment monitoring. Disabling preserves stored records. */
+	monitor?: MonitorOptions;
 	providers?: Record<string, BusinessPaymentProvider>;
 	/** Default 30 minutes; affects new payment attempts, never discards verified late payments. */
 	orderTtlMs?: number;

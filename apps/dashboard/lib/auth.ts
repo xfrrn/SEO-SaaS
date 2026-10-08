@@ -2,6 +2,10 @@ import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { business } from "@app/auth-sdk/business";
 import { credits } from "@app/auth-sdk/credits";
+import {
+	createMonitorOptions,
+	startMonitorWorker,
+} from "@app/auth-sdk/monitor";
 import { nextCookies } from "@app/auth-sdk/next-js";
 import { admin } from "@app/auth-sdk/plugins";
 import { betterAuth } from "@app/auth-sdk/server";
@@ -17,6 +21,7 @@ function createAuth() {
 	const emailConfig = readEmailConfig();
 	const email = emailConfig ? createEmailHooks(emailConfig) : undefined;
 	const payments = getPayments();
+	const monitor = createMonitorOptions();
 	let database: Pool | Database.Database;
 	if (config.database.kind === "postgres") {
 		const pool = new Pool({
@@ -58,7 +63,11 @@ function createAuth() {
 			admin({ auditLog: true }),
 			subscription({ catalog: true }),
 			credits(),
-			business({ providers: payments.providers, orderTtlMs: 60 * 60_000 }),
+			business({
+				providers: payments.providers,
+				orderTtlMs: 60 * 60_000,
+				monitor,
+			}),
 			nextCookies(),
 		],
 	});
@@ -67,6 +76,13 @@ function createAuth() {
 let auth: ReturnType<typeof createAuth> | undefined;
 let payments: ReturnType<typeof createPayments> | undefined;
 let closeDatabase: (() => void | Promise<void>) | undefined;
+let monitorWorker: ReturnType<typeof startMonitorWorker> | undefined;
+
+/** Called by Next.js instrumentation in the persistent Node server. */
+export function startDashboardMonitor() {
+	if (process.env.APP_MONITOR_ENABLED === "true" && !monitorWorker)
+		monitorWorker = startMonitorWorker({ auth: getAuth() });
+}
 
 /** Create the real SDK server on first use; never migrate or seed during a request. */
 export function getAuth() {
@@ -80,6 +96,8 @@ export function getPayments() {
 
 /** Release the setup CLI's database resources so it can terminate cleanly. */
 export async function closeAuth() {
+	await monitorWorker?.stop();
+	monitorWorker = undefined;
 	await closeDatabase?.();
 	closeDatabase = undefined;
 	auth = undefined;

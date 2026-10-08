@@ -1,4 +1,5 @@
 import type { BetterAuthPluginDBSchema } from "@better-auth/core/db";
+import { monitorOrderFields, monitorSchema } from "./monitor-schema";
 
 function storedInteger(value: unknown): number {
 	if (
@@ -16,8 +17,10 @@ function storedInteger(value: unknown): number {
 
 /** Local business records; payment-channel tables and auth tables remain owned by their plugins. */
 export const businessSchema = {
+	...monitorSchema,
 	businessOrder: {
 		fields: {
+			...monitorOrderFields,
 			referenceId: { type: "string", required: true, index: true },
 			checkoutKey: { type: "string", required: true, unique: true },
 			provider: { type: "string", required: true },

@@ -17,6 +17,16 @@
     "lint:package": "publint run --strict --pack false"
   },
   "exports": {
+    "./monitor": {
+      "dev-source": "./src/monitor.ts",
+      "types": "./dist/monitor.d.mts",
+      "default": "./dist/monitor.mjs"
+    },
+    "./monitor/client": {
+      "dev-source": "./src/monitor/client.ts",
+      "types": "./dist/monitor/client.d.mts",
+      "default": "./dist/monitor/client.mjs"
+    },
     "./business": {
       "dev-source": "./src/business.ts",
       "types": "./dist/business.d.mts",
@@ -95,6 +105,12 @@
   },
   "typesVersions": {
     "*": {
+      "monitor": [
+        "./dist/monitor.d.mts"
+      ],
+      "monitor/client": [
+        "./dist/monitor/client.d.mts"
+      ],
       "business": [
         "./dist/business.d.mts"
       ],
@@ -149,6 +165,7 @@
     "@app/subscription": "workspace:^"
   },
   "devDependencies": {
+    "monitor-analytics-sdk": "file:../../vendor/monitor-analytics-sdk-0.1.1.tgz",
     "@better-auth/core": "workspace:*",
     "@better-auth/stripe": "workspace:*",
     "@types/react": "catalog:react19",
@@ -163,6 +180,7 @@
     "vitest": "catalog:vitest"
   },
   "peerDependencies": {
+    "monitor-analytics-sdk": "0.1.1",
     "better-auth": "workspace:^",
     "@better-auth/stripe": "workspace:^",
     "next": "^14 || ^15 || ^16",
@@ -170,6 +188,9 @@
     "stripe": "^18 || ^19 || ^20 || ^21 || ^22"
   },
   "peerDependenciesMeta": {
+    "monitor-analytics-sdk": {
+      "optional": true
+    },
     "@better-auth/stripe": {
       "optional": true
     },

@@ -103,6 +103,7 @@ web_modules/
 # Output of 'npm pack'
 
 *.tgz
+!vendor/monitor-analytics-sdk-0.1.1.tgz
 
 # Yarn Integrity file
 

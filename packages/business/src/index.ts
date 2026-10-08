@@ -9,13 +9,16 @@ import type { Where } from "@better-auth/core/db/adapter";
 import type { BetterAuthPlugin, GenericEndpointContext } from "better-auth";
 import { APIError } from "better-auth";
 import {
+	addOAuthServerContext,
 	createAuthEndpoint,
 	createAuthMiddleware,
 	getAuthoritativeSessionFromCtx,
+	getOAuthState,
 } from "better-auth/api";
 import type { AdminOptions } from "better-auth/plugins/admin";
 import { createAdminAuditService } from "better-auth/plugins/admin";
 import * as z from "zod";
+import { createMonitorService, monitorContext, monitorQuery } from "./monitor";
 import { businessSchema } from "./schema";
 import { assertBusinessDatabase, createBusinessService } from "./service";
 import type { BusinessOptions, BusinessPermission } from "./types";
@@ -28,6 +31,12 @@ import {
 	paymentConfirmation,
 } from "./validation";
 
+export type {
+	MonitorDelivery,
+	MonitorEvent,
+	MonitorOptions,
+	MonitorRecord,
+} from "./monitor";
 export { createBusinessService } from "./service";
 export type * from "./types";
 
@@ -39,6 +48,15 @@ declare module "@better-auth/core" {
 
 /** One server-side composition plugin for the dashboard and purchase routes. */
 export function business(options: BusinessOptions = {}) {
+	if (
+		options.monitor &&
+		(!/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}$/.test(options.monitor.siteId) ||
+			!Number.isSafeInteger(options.monitor.retryWindowMs ?? 604_800_000) ||
+			(options.monitor.retryWindowMs ?? 604_800_000) <= 0)
+	)
+		throw new Error("Invalid business monitor configuration");
+	const monitor = (ctx: GenericEndpointContext) =>
+		createMonitorService(ctx.context.adapter, options.monitor);
 	function service(ctx: GenericEndpointContext) {
 		const subscription = ctx.context.getPlugin("subscription");
 		if (!subscription) throw new Error("Business requires subscription");
@@ -109,6 +127,20 @@ export function business(options: BusinessOptions = {}) {
 		id: "business",
 		options,
 		schema: businessSchema,
+		hooks: {
+			before: [
+				{
+					matcher: (ctx) =>
+						!!options.monitor &&
+						(ctx.path === "/sign-in/social" || ctx.path === "/sign-in/oauth2"),
+					handler: createAuthMiddleware(async (ctx) => {
+						await addOAuthServerContext({
+							businessMonitor: monitorContext(options.monitor, ctx.headers),
+						});
+					}),
+				},
+			],
+		},
 		init(ctx) {
 			if (!ctx.getPlugin("subscription")?.options.catalog)
 				throw new Error("Business requires subscription({ catalog: true })");
@@ -120,8 +152,123 @@ export function business(options: BusinessOptions = {}) {
 			)
 				throw new Error("Business requires admin({ auditLog: true })");
 			assertBusinessDatabase(ctx.adapter);
+			return {
+				options: {
+					databaseHooks: {
+						user: {
+							create: {
+								async before(user, context) {
+									if (!options.monitor || !context?.path) return;
+									const email = context.path === "/sign-up/email";
+									const oauth =
+										context.path === "/sign-in/social" ||
+										context.path === "/sign-in/oauth2" ||
+										context.path.startsWith("/callback/") ||
+										context.path.startsWith("/oauth2/callback/");
+									if (!email && !oauth) return;
+									let snapshot = monitorContext(
+										options.monitor,
+										context.headers,
+									);
+									if (oauth) {
+										const saved = (await getOAuthState())?.serverContext
+											?.businessMonitor;
+										if (
+											saved &&
+											typeof saved === "object" &&
+											"siteId" in saved &&
+											saved.siteId === options.monitor.siteId
+										) {
+											const attribution =
+												"attribution" in saved
+													? options.monitor.parseContext(saved.attribution)
+													: undefined;
+											snapshot = {
+												siteId: options.monitor.siteId,
+												environment: options.monitor.environment,
+												...(attribution ? { attribution } : {}),
+											};
+										}
+									}
+									return {
+										data: {
+											...user,
+											monitorSiteId: options.monitor.siteId,
+											monitorSignupPending: true,
+											monitorSignup: {
+												...snapshot,
+												eventId: crypto.randomUUID(),
+												occurredAt: user.createdAt.toISOString(),
+												method: email ? "email" : "oauth",
+											},
+										},
+									};
+								},
+							},
+						},
+					},
+				},
+			};
 		},
 		endpoints: {
+			/** One bounded background round; this endpoint is never exposed over HTTP. */
+			runMonitorDelivery: createAuthEndpoint.serverOnly(
+				{ method: "POST" },
+				async (ctx) => monitor(ctx).drain(),
+			),
+			getMonitorStatus: createAuthEndpoint(
+				"/business/admin/monitor/status",
+				read("monitor:read"),
+				async (ctx) => monitor(ctx).status(),
+			),
+			listMonitorEvents: createAuthEndpoint(
+				"/business/admin/monitor/events",
+				{
+					...read("monitor:read"),
+					query: monitorQuery.optional(),
+				},
+				async (ctx) => monitor(ctx).list(ctx.query),
+			),
+			getMonitorAttribution: createAuthEndpoint(
+				"/business/admin/monitor/attribution",
+				{
+					...read("monitor:read"),
+					query: z
+						.object({
+							userId: identifier.optional(),
+							orderId: identifier.optional(),
+						})
+						.refine(
+							(value) => !!value.userId !== !!value.orderId,
+							"Choose one attribution subject",
+						),
+				},
+				async (ctx) => monitor(ctx).attribution(ctx.query),
+			),
+			retryMonitorEvent: createAuthEndpoint(
+				"/business/admin/monitor/retry",
+				{
+					...write("monitor:retry"),
+					body: z.object({
+						eventId: z.uuid(),
+						operationId: identifier,
+						reason: z.string().trim().min(1).max(500),
+					}),
+				},
+				async (ctx) => {
+					const actorId = ctx.context.session.user.id;
+					return service(ctx).manual(
+						actorId,
+						ctx.body.operationId,
+						actorId,
+						"monitor.retry",
+						ctx.body.reason,
+						{ eventId: ctx.body.eventId },
+						(db) => monitor(ctx).retry(ctx.body.eventId, db),
+						ctx.body.eventId,
+					);
+				},
+			),
 			listBusinessProviders: createAuthEndpoint(
 				"/business/providers",
 				{
@@ -154,7 +301,11 @@ export function business(options: BusinessOptions = {}) {
 					metadata: { noStore: true },
 				},
 				async (ctx) =>
-					service(ctx).createOrder(ctx.context.session.user.id, ctx.body),
+					service(ctx).createOrder(
+						ctx.context.session.user.id,
+						ctx.body,
+						ctx.headers,
+					),
 			),
 			checkoutBusinessOrder: createAuthEndpoint(
 				"/business/orders/checkout",

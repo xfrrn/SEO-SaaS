@@ -133,6 +133,9 @@ importers:
 
   apps/dashboard:
     dependencies:
+      monitor-analytics-sdk:
+        specifier: file:../../vendor/monitor-analytics-sdk-0.1.1.tgz
+        version: file:vendor/monitor-analytics-sdk-0.1.1.tgz
       nodemailer:
         specifier: 10.0.15
         version: 10.0.15
@@ -265,6 +268,9 @@ importers:
         specifier: workspace:^
         version: link:../subscription
     devDependencies:
+      monitor-analytics-sdk:
+        specifier: file:../../vendor/monitor-analytics-sdk-0.1.1.tgz
+        version: file:vendor/monitor-analytics-sdk-0.1.1.tgz
       '@better-auth/core':
         specifier: workspace:*
         version: link:../core
@@ -7487,6 +7493,17 @@ packages:
   zod@4.5.4:
     resolution: {integrity: sha512-sC95tT5iHHH9gtpj6A81kh+NEaRAUFN+qlUPDUbRfOMvNf5QCBqsb3WgvnpVtK5Y+4UfA6KqufotuTvMGiTlsA==}
 
+  "@plausible-analytics/tracker@0.4.6":
+    resolution:
+      integrity: sha512-nbu6xGgSP6jeYuoVklZBzucUnIpo75tVu3Kr+R0EDycVKaMC/jF5Q/YCaM/8gR4fPZ1IDcXt6FdBJFZ1uZwEPA==
+  monitor-analytics-sdk@file:vendor/monitor-analytics-sdk-0.1.1.tgz:
+    resolution:
+      integrity: sha512-W/407nvXVNOJqVN3irMe8P95LlEZ8O1Vrf3NGEANytHTIqihY8BNIE4mulkX5DmvwZOGEJuK1VrrvbpOh6KF3w==
+      tarball: file:vendor/monitor-analytics-sdk-0.1.1.tgz
+    version: 0.1.1
+    engines:
+      node: ">=24.0.0"
+
 snapshots:
 
   nodemailer@10.0.15: {}
@@ -14433,3 +14450,8 @@ snapshots:
   zimmerframe@1.1.4: {}
 
   zod@4.5.4: {}
+
+  "@plausible-analytics/tracker@0.4.6": {}
+  monitor-analytics-sdk@file:vendor/monitor-analytics-sdk-0.1.1.tgz:
+    dependencies:
+      "@plausible-analytics/tracker": 0.4.6

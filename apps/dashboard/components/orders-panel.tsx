@@ -3,6 +3,7 @@
 import type { BusinessOrder } from "@app/auth-sdk/business";
 import type { FormEvent } from "react";
 import { useState } from "react";
+import { MonitorAttribution } from "@/components/monitor-panel";
 import { Field, Notice, Pagination, RequestState } from "@/components/shared";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -331,6 +332,7 @@ export function OrdersPanel() {
 									{JSON.stringify(selected.product, null, 2)}
 								</pre>
 							</div>
+							<MonitorAttribution orderId={selected.id} />
 							{canRetry(selected) && (
 								<div className="space-y-3 border-t pt-4">
 									<p className="text-sm text-muted-foreground">

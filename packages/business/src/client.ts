@@ -28,7 +28,12 @@ function preserveJSONDates(
 				preserveJSONDates(
 					item,
 					original[key],
-					json || key === "product" || key === "limits" || key === "details",
+					json ||
+						key === "product" ||
+						key === "limits" ||
+						key === "details" ||
+						key === "payload" ||
+						key === "attribution",
 				),
 			]),
 		);
@@ -54,6 +59,7 @@ export function businessClient() {
 						"/business/admin/membership/adjust",
 						"/business/admin/products/save",
 						"/business/admin/products/publish",
+						"/business/admin/monitor/retry",
 					].includes(route);
 					const parser = options?.jsonParser ?? parseJSON;
 					return {

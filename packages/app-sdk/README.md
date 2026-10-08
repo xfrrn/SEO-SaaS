@@ -30,6 +30,8 @@ pnpm add ./vendor/auth-sdk.tgz
 | `@app/auth-sdk/credits/client` | `creditsClient` |
 | `@app/auth-sdk/business` | `business` 组合业务、订单履约与后台 API；支付适配类型 |
 | `@app/auth-sdk/business/client` | `businessClient` 购买与管理员客户端入口 |
+| `@app/auth-sdk/monitor` | `createMonitorOptions`、`startMonitorWorker`；按需安装监控包 |
+| `@app/auth-sdk/monitor/client` | `monitorHeaders`；无服务端依赖 |
 | `@app/auth-sdk/stripe` | Stripe 服务端插件 |
 | `@app/auth-sdk/stripe/client` | `stripeClient` |
 | `@app/auth-sdk/paypal` | PayPal 订单、收款确认与 webhook 验签 |
@@ -47,6 +49,83 @@ PayPal.cn 全球收单的服务端客户端实现在独立的 `@app/paypal` 包�
 本地从仓库根目录运行 `pnpm build:sdk`，复制 `apps/dashboard/.env.example` 为 `apps/dashboard/.env.local`，填写密钥、数据库、初始管理员及 `BETTER_AUTH_URL=http://127.0.0.1:3001`，然后执行 `pnpm dashboard:setup` 和 `pnpm dashboard:dev`。初始化命令会迁移表并创建新管理员，访问地址为 `http://127.0.0.1:3001`；具体配置和生产数据库要求见应用说明。
 
 迁入已有网站时，复用 `apps/dashboard/components` 中的面板，将 `apps/dashboard/lib/auth.ts` 的 `getAuth()` 接到网站现有认证实例，在 `lib/auth-client.ts` 复用同源认证路由，并为该实例启用 `admin({ auditLog: true })`、`subscription({ catalog: true })`、`credits()` 和 `business({ providers })`。管理员和网站用户共用同一数据库，已有 `/api/auth` 路由无需重复创建。保留网站原有注册策略和服务端权限校验；支付适配器、付款及退款核验仍由网站可信服务端配置。
+
+## 可信业务监控
+
+监控复用 Business 插件的真实注册与可信付款流程。启用网站安装固定版本的 `monitor-analytics-sdk-0.1.1.tgz`，与 `auth-sdk.tgz` 一同复制到网站 `vendor/`；禁止使用开发机器绝对路径作为运行依赖。监控包仅在导入服务端监控入口时需要。该入口与监控发送产物使用 ES2022 和 Web API，Collector 与本仓库工具使用 Node 24。
+
+```ts
+import { business } from "@app/auth-sdk/business";
+import { createMonitorOptions, startMonitorWorker } from "@app/auth-sdk/monitor";
+
+// 在原有 auth 实例的 plugins 中替换已有 business 配置：
+business({ providers, monitor: createMonitorOptions({ env: process.env }) });
+// 保留 admin({ auditLog: true })、subscription({ catalog: true }) 和 credits()。
+
+// 每个常驻服务实例启动一次；Dashboard instrumentation 已完成此步骤。
+const worker = startMonitorWorker({ auth });
+// 关闭宿主服务时，先停止 worker，再关闭数据库：
+await worker.stop();
+```
+
+`createMonitorOptions()` 在 Node 默认读取 `process.env`；Workers/Deno 可显式传入 `env`。`APP_MONITOR_ENABLED` 缺省或 `false` 返回 `undefined`，启用时配置不完整会在初始化时抛错。轮换配置后重启。Worker 立即处理一次，随后每 60 秒处理，单轮最多 20 条、并发 2；不会重叠运行。多实例通过数据库条件更新租约协调，进程中断后回收到期租约。无常驻进程的宿主由已有调度调用 `auth.api.runMonitorDelivery()`，不能依赖请求结束后的定时器。
+
+| 服务端变量 | 规则 |
+| --- | --- |
+| `APP_MONITOR_ENABLED` | `true` 启用；默认关闭 |
+| `APP_MONITOR_SITE_ID` | 1–64 位字母、数字、`_`、`.`、`-`，首位须为字母或数字 |
+| `APP_MONITOR_ENDPOINT` | Collector 完整 HTTPS `/v1/server-events` 地址；禁止用户信息、查询参数和片段；仅 development 允许回环 HTTP |
+| `APP_MONITOR_TOKEN` | 32–256 位无空白 ASCII 写入凭证，只在服务端保存，不使用 `NEXT_PUBLIC_` |
+| `APP_MONITOR_ENVIRONMENT` | `production`、`staging`、`development`；默认按 `NODE_ENV` 选择生产或开发 |
+| `APP_MONITOR_ORIGINS_JSON` | 必填，本站精确 HTTP(S) origin 的非空 JSON 数组，与 Collector 配置一致 |
+| `APP_MONITOR_ALLOWED_PATHS_JSON` | 公共路径 JSON 数组，默认 `[]`；根路径与 `/[redacted]` 按协议始终允许 |
+| `APP_MONITOR_RETRY_WINDOW_DAYS` | 正整数，默认首次尝试后 7 天 |
+| `APP_MONITOR_COLLECTOR_RETENTION_DAYS` | 正整数，默认 30，必须填写 Collector 实际保留期，且严格大于补发窗口 |
+
+Collector 该站点写入凭证须允许 `signup_confirmed: ["method"]`、`payment_confirmed: ["amount", "currency"]`，来源和公共路径白名单保持一致。一个网站使用独立数据库、站点 ID 和凭证。站点 ID 变更不会搬迁旧站点记录。
+
+浏览器沿用已初始化且按许可返回归因的监控实例：
+
+```ts
+import { monitor } from "monitor-analytics-sdk";
+import { monitorHeaders } from "@app/auth-sdk/monitor/client";
+
+await authClient.signUp.email({
+  name, email, password,
+  fetchOptions: { headers: monitorHeaders(monitor.getAttributionContext()) },
+});
+// 仅在网站原本已启用该 OAuth 渠道时使用：
+await authClient.signIn.social({
+  provider: "google", callbackURL: "/",
+  fetchOptions: { headers: monitorHeaders(monitor.getAttributionContext()) },
+});
+await authClient.business.orders.create({
+  productId, provider, idempotencyKey,
+  fetchOptions: { headers: monitorHeaders(monitor.getAttributionContext()) },
+});
+```
+
+请求头 `X-Monitor-Context` 为 base64url JSON，编码后最多 4 KiB。缺失、无效、超限数据直接省略，服务端再次校验站点、结构、URL、来源与公共路径。未获得归因许可时 `getAttributionContext()` 返回缺失值，不生成替代访问来源。跨域网站需在既有认证/CORS 配置允许此头。用户、订单、金额和事件 UUID 均由后端确定；浏览器归因只用于分析，不可用于身份或支付授权。
+
+邮箱注册在真实用户 insert 前保存不可由客户端写入/会话读取的内部快照与待入队标记，后台将已提交用户物化为投递记录并在同一事务清除标记。邮箱验证、登录、重复注册的通用成功响应、管理员建号与初始化均不新增事件。OAuth 使用现有受保护的 `serverContext` 携带线索，只实际新建账号时计数，不更改 OAuth state 或启用新渠道。
+
+订单独立保存首次创建时的归因，同一幂等键重试不覆盖；没有当前线索时不继承用户注册来源。付款事件与可信付款在同一数据库事务入队，履约失败仍可投递。重复通知、主动查询和履约重试按“站点＋渠道＋实际付款 ID”去重。已有真实续费确认入口生成新订单并继承原订单归因。本版不新增退款监控或来源转化报表。
+
+| `auth.api` 方法 | 认证 base path 下 HTTP 路径 | 权限 |
+| --- | --- | --- |
+| `getMonitorStatus({ headers })` | `GET /business/admin/monitor/status` | `monitor:read` |
+| `listMonitorEvents({ headers, query })` | `GET /business/admin/monitor/events` | `monitor:read` |
+| `getMonitorAttribution({ headers, query })` | `GET /business/admin/monitor/attribution` | `monitor:read` |
+| `retryMonitorEvent({ headers, body })` | `POST /business/admin/monitor/retry` | `monitor:retry` |
+| `runMonitorDelivery()` | 无 HTTP 路由 | 仅服务端 |
+
+列表 `query` 支持 `limit`（默认 20、上限 100）、`offset`、`type`（`signup_confirmed` / `payment_confirmed`）、`status`（`pending` / `processing` / `sent` / `failed` / `expired`）、`userId`、`orderId`。归因查询必须且只能传 `userId` 或 `orderId`。查询站点固定为服务端配置，不接受客户端站点选择。客户端使用 `authClient.business.admin.monitor.status/events/attribution/retry`。权限复用 `BusinessOptions.authorize`，默认管理员可操作；匿名、禁用用户、模拟登录会话均不能访问。
+
+补发 `body` 为 `{ eventId, operationId, reason }`，复用现有审计和幂等操作记录。失败记录在窗口内才能补发，成功记录不可补发。事件 ID、原业务时间和载荷始终不变，不重新核验付款或发放权益。关闭监控后保留数据，所有采集/投递暂停；首次启用不扫描补报历史用户或历史付款。
+
+发送函数限制 5 秒，只接受有效 `{accepted, duplicates}` 回执。网络、429、5xx 指数退避（遵守 Retry-After），最多自动尝试 8 次。协议、配置或权限错误进入 `failed`；手动补发保留累计尝试次数，已达 8 次的事件只执行本次人工安排。超过首次尝试后的窗口停止投递。策略变化导致旧快照不再合法时标记失败，不能静默删改旧快照。记录和日志只保存安全错误码及 HTTP 状态，不保存响应正文、凭证或网络错误原文。
+
+升级先迁移完整 auth schema：`user` 新增 `monitorSignup`（JSON）、`monitorSiteId`、`monitorSignupPending`（默认 false）；`businessOrder` 新增 `monitorContext`（JSON）；新增 `businessMonitorEvent`、UUID/业务键唯一约束和租约查询索引。即使关闭监控，这些 schema 也保留。使用既有迁移流程或 `getMigrations(auth.options).runMigrations()`；不要在请求中自动迁移。JSON 快照内的 ISO 时间保留字符串，普通用户和订单响应不返回内部字段。生产需要支持真实事务和唯一索引的 SQL 适配器。
 
 ## SEO-worker 站点统计
 

@@ -76,6 +76,8 @@ SSO、Passkey、SCIM 等独立包的源码和测试仍保留，主 SDK 的打包
 | `@app/auth-sdk/credits/client` | credits 客户端插件 `creditsClient` |
 | `@app/auth-sdk/business` | 组合业务插件 `business`，管理接口及可信付款回调入口 |
 | `@app/auth-sdk/business/client` | 组合业务客户端插件 `businessClient` |
+| `@app/auth-sdk/monitor` | 可选监控配置 `createMonitorOptions`、常驻任务 `startMonitorWorker` |
+| `@app/auth-sdk/monitor/client` | 浏览器归因请求头 `monitorHeaders` |
 | `@app/auth-sdk/stripe` | Stripe 服务端插件 |
 | `@app/auth-sdk/stripe/client` | Stripe 客户端插件 |
 | `@app/auth-sdk/paypal` | PayPal 订单、收款和 webhook 验签 |
@@ -367,3 +369,15 @@ pnpm typecheck
 默认 SDK 测试不需要 Docker。外部数据库测试配置位于 `test/docker-compose.yml`，例如启动 PostgreSQL：`docker compose --project-directory . -f test/docker-compose.yml up -d postgres`。
 
 认证代码继续遵守 [MIT License](./LICENSE.md)。开发约定见 [AGENTS.md](./AGENTS.md)。
+
+## 可信业务监控
+
+Business 可通过 `business({ providers, monitor: createMonitorOptions({ env: process.env }) })` 接入注册、付款和归因。使用监控入口的网站还需复制并安装固定版本的 `vendor/monitor-analytics-sdk-0.1.1.tgz`：`pnpm add ./vendor/monitor-analytics-sdk-0.1.1.tgz`。该包是可选 peer，不启用监控的网站可继续只使用原有入口。两个安装包均可独立复制到使用方，无需本机仓库路径。
+
+配置使用 `APP_MONITOR_*`，默认关闭。Dashboard 已通过 Node `instrumentation` 每分钟启动一轮投递，新增“监控”页和用户/订单归因展示。每次实际新注册生成一条记录；支付验签、主动查询及真实续费共用付款去重逻辑。Collector 故障由本地投递表承接，人工补发沿用原事件。首次启用不补报历史，关闭后暂停采集与投递并保留记录。
+
+升级需要为完整 auth 配置执行迁移：用户增加 `monitorSignup`、`monitorSiteId`、`monitorSignupPending`，订单增加 `monitorContext`，新增 `businessMonitorEvent` 表及唯一/查询索引。即使暂不启用监控，升级后的 Business schema 也包含这些字段；先迁移再启动新服务。运行中的服务不会自动迁移。
+
+配置、浏览器接入、接口权限及补发期限详见 [SDK 监控接入](./packages/app-sdk/README.md#可信业务监控) 与 [Dashboard 说明](./apps/dashboard/README.md#监控接入)。常驻任务要求持续运行的 Node 服务；其他宿主可由自己的任务调度调用仅服务端可用的 `auth.api.runMonitorDelivery()`。
+
+独立安装包与真实 Collector 的可重复验证：先 `pnpm build:sdk`，再设置 `MONITOR_COLLECTOR_PATH` 指向独立接收服务目录，运行 `pnpm test:monitor:integration`。测试复用 dashboard 的 Playwright；Windows 默认使用已安装的 Chrome，其他环境使用 Playwright Chromium，也可通过 PLAYWRIGHT_CHANNEL 指定。测试使用临时业务库、临时 Collector 库和随机测试凭证，在真实浏览器加载独立安装的 Monitor 包，验证身份存储读取失败时，浏览器事件及注册/付款事件的 visitor/session ID 与归因仍然一致，并验证 `received_via: 'server'`、丢失本地确认后的去重恢复以及仅 Web API 环境的服务端导入。支付商户沙箱验收仍需对应商户的测试凭据和可接收通知的地址。

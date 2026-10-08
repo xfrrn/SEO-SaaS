@@ -116,6 +116,18 @@ pnpm dashboard:dev
 
 保留到期积分、实际付款触发的赠送、履约重试。Business 底层支持已完成退款的权益核对，但当前 Stripe/PayPal 适配器未提供 `verifyRefund`，通知路由也未接入退款事件，因此不会自动同步渠道退款。渠道退款与相关权益需要人工核对处理，不实现 A6 的年付后定时分月赠送，也不实现 A7 的新增渠道自动扣款/直接发起退款。
 
+## 监控接入
+
+Dashboard 已集成 `business({ monitor: createMonitorOptions() })`、`instrumentation.ts` 常驻任务和“监控”页。复制 `.env.example` 中 `APP_MONITOR_*` 配置，先迁移完整 auth schema，再启用并重启服务。固定版本监控包位于工作区 `vendor/monitor-analytics-sdk-0.1.1.tgz`。独立部署时复制此包与 `auth-sdk.tgz`，无需访问原开发仓库。
+
+完整配置和主站注册、OAuth 发起、下单时的 `monitorHeaders(monitor.getAttributionContext())` 用法见 [SDK 监控接入](../../packages/app-sdk/README.md#可信业务监控)。管理后台自身不新增公开注册或 OAuth 页面。用户和订单详情显示各自已保存的归因；缺少线索时明确显示缺失。
+
+“监控”页显示服务端站点、环境、接收地址、凭证是否配置、各投递状态计数与最近成功时间；不会接收或显示凭证。可按类型、状态、完整用户/订单 ID 查询，查看原始事件和安全失败原因，填写原因后安排补发。补发复用事件与审计操作 ID，不再次核验收款或发放权益。配置正确但尚无成功回执时显示“暂无成功投递”。关闭状态、空结果和加载失败分别展示。
+
+后台 Node 进程启动后立即处理一轮，此后每 60 秒处理最多 20 条、并发 2；数据库租约支持多实例与进程重启。无需打开管理页面。该运行方式要求常驻 Node 服务；无常驻进程的部署应使用宿主已有调度调用仅服务端可用的 `auth.api.runMonitorDelivery()`。默认补发窗口为首次尝试后 7 天，必须小于 Collector 实际保留期（默认 30 天）。Collector 必须对同一站点的事件 UUID 去重。
+
+新增表 `businessMonitorEvent`、用户内部注册字段和订单内部归因字段需要通过既有迁移流程发布。首次开启不补报历史；关闭时停止采集和投递、保留已有记录。退款监控、转化报表和新增收款渠道不在本版范围内。
+
 ## 检查与构建
 
 ```powershell

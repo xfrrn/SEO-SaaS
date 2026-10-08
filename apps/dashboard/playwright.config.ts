@@ -12,6 +12,15 @@ mkdirSync(directory, { recursive: true });
 // Never read developer database or administrator credentials for browser tests.
 const environment = {
 	PAYMENT_PROVIDER: "none",
+	APP_MONITOR_ENABLED: "true",
+	APP_MONITOR_SITE_ID: "dashboard-test",
+	APP_MONITOR_ENDPOINT: "http://127.0.0.1:1/v1/server-events",
+	APP_MONITOR_TOKEN: randomBytes(32).toString("hex"),
+	APP_MONITOR_ENVIRONMENT: "development",
+	APP_MONITOR_ORIGINS_JSON: JSON.stringify([`http://127.0.0.1:${port}`]),
+	APP_MONITOR_ALLOWED_PATHS_JSON: "[]",
+	APP_MONITOR_RETRY_WINDOW_DAYS: "7",
+	APP_MONITOR_COLLECTOR_RETENTION_DAYS: "30",
 	SMTP_HOST: "",
 	SMTP_PORT: "",
 	SMTP_SECURE: "",

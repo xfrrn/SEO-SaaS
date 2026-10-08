@@ -12,6 +12,7 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
+    "monitor-analytics-sdk": "file:../../vendor/monitor-analytics-sdk-0.1.1.tgz",
     "@app/auth-sdk": "workspace:*",
     "@radix-ui/react-dialog": "1.1.4",
     "@radix-ui/react-label": "2.1.1",

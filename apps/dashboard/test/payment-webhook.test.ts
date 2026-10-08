@@ -28,6 +28,13 @@ test("PayPal webhook fulfills a real abandoned checkout exactly once and rejects
 		PAYPAL_CLIENT_SECRET: "test-secret",
 		PAYPAL_WEBHOOK_ID: "test-webhook",
 		PAYPAL_ENVIRONMENT: "sandbox",
+		APP_MONITOR_ENABLED: "true",
+		APP_MONITOR_SITE_ID: "webhook-test",
+		APP_MONITOR_ENVIRONMENT: "development",
+		APP_MONITOR_ENDPOINT: "https://collector.example/v1/server-events",
+		APP_MONITOR_TOKEN: randomUUID(),
+		APP_MONITOR_ORIGINS_JSON: '["https://app.example.test"]',
+		APP_MONITOR_ALLOWED_PATHS_JSON: "[]",
 		SMTP_HOST: "",
 		SMTP_PORT: "",
 		SMTP_SECURE: "",
@@ -41,6 +48,7 @@ test("PayPal webhook fulfills a real abandoned checkout exactly once and rejects
 	Object.assign(process.env, environment);
 	let localOrderId = "";
 	let captures = 0;
+	const reported: Record<string, unknown>[] = [];
 	const paidAt = new Date().toISOString();
 	const amount = { currency_code: "USD", value: "9.99" };
 	t.mock.method(
@@ -48,6 +56,10 @@ test("PayPal webhook fulfills a real abandoned checkout exactly once and rejects
 		"fetch",
 		async (input: string | URL | Request, init?: RequestInit) => {
 			const url = new URL(input instanceof Request ? input.url : String(input));
+			if (url.origin === "https://collector.example") {
+				reported.push(...JSON.parse(String(init?.body)).events);
+				return Response.json({ accepted: 1, duplicates: 0 });
+			}
 			assert.equal(url.origin, "https://api-m.sandbox.paypal.com");
 			if (url.pathname === "/v1/oauth2/token")
 				return Response.json({ access_token: "test-token" });
@@ -202,6 +214,17 @@ test("PayPal webhook fulfills a real abandoned checkout exactly once and rejects
 		assert.equal((await credits.balance(user.id)).balance, 80);
 		assert.equal(await adapter.count({ model: "creditEntry" }), 1);
 		assert.equal(await adapter.count({ model: "businessPaymentEvent" }), 1);
+		await Promise.all([
+			POST(delivery()),
+			auth.api.completeBusinessOrder({ headers, body: { orderId: order.id } }),
+		]);
+		assert.equal(await adapter.count({ model: "businessMonitorEvent" }), 1);
+		assert.equal(reported.length, 0);
+		await auth.api.runMonitorDelivery();
+		assert.equal(reported.length, 1);
+		assert.equal(reported[0].event_type, "payment_confirmed");
+		assert.deepEqual(reported[0].props, { amount: 999, currency: "USD" });
+		assert.equal(reported[0].occurred_at, paidAt);
 		const fulfilled = await adapter.findOne<BusinessOrder>({
 			model: "businessOrder",
 			where: [{ field: "id", value: order.id }],

@@ -10,6 +10,8 @@ import type { BetterAuthOptions } from "better-auth";
 import { APIError } from "better-auth";
 import { createAdminAuditService } from "better-auth/plugins/admin";
 import type * as z from "zod";
+import type { MonitorSnapshot } from "./monitor";
+import { createMonitorService, monitorContext } from "./monitor";
 import type { BusinessJSON, BusinessOptions, BusinessOrder } from "./types";
 import {
 	canonicalJSON,
@@ -24,6 +26,14 @@ import {
 
 const day = 86_400_000;
 const fail = (message: string) => new APIError("CONFLICT", { message });
+type StoredBusinessOrder = BusinessOrder & {
+	monitorContext?: MonitorSnapshot | null;
+};
+
+function publicOrder(order: StoredBusinessOrder): BusinessOrder {
+	const { monitorContext: _monitor, ...result } = order;
+	return result;
+}
 
 /** Business writes require real transactions, not an adapter's sequential fallback. */
 export function assertBusinessDatabase<Options extends BetterAuthOptions>(
@@ -44,12 +54,13 @@ export function createBusinessService<Options extends BetterAuthOptions>(
 ) {
 	assertBusinessDatabase(adapter);
 	const products = createProductService(adapter);
+	const monitor = createMonitorService(adapter, options.monitor);
 	const ttl = options.orderTtlMs ?? 30 * 60_000;
 	if (!Number.isSafeInteger(ttl) || ttl <= 0 || ttl > 365 * day)
 		throw new Error("Invalid business orderTtlMs");
 
 	async function getOrder(id: string, db = adapter) {
-		const order = await db.findOne<BusinessOrder>({
+		const order = await db.findOne<StoredBusinessOrder>({
 			model: "businessOrder",
 			where: [{ field: "id", value: id }],
 		});
@@ -101,6 +112,7 @@ export function createBusinessService<Options extends BetterAuthOptions>(
 	async function createOrder(
 		referenceId: string,
 		input: z.input<typeof newOrder>,
+		headers?: Headers,
 	) {
 		const body = newOrder.parse(input);
 		provider(body.provider);
@@ -120,7 +132,7 @@ export function createBusinessService<Options extends BetterAuthOptions>(
 					existing.provider !== body.provider
 				)
 					throw fail("Order idempotency key conflicts with another purchase");
-				return existing;
+				return publicOrder(existing);
 			}
 			const product = await createProductService(db).get(body.productId);
 			if (
@@ -138,33 +150,36 @@ export function createBusinessService<Options extends BetterAuthOptions>(
 					message: "Paid checkout requires a positive amount",
 				});
 			const createdAt = new Date();
-			return db.create<Omit<BusinessOrder, "id">, BusinessOrder>({
-				model: "businessOrder",
-				data: {
-					referenceId,
-					checkoutKey,
-					provider: body.provider,
-					productId: product.id,
-					productKey: product.key,
-					parentOrderId: null,
-					product: { ...product, createdAt: product.createdAt.toISOString() },
-					amount: product.amount,
-					currency: product.currency,
-					status: "pending",
-					providerOrderId: null,
-					providerKey: null,
-					checkoutURL: null,
-					paymentId: null,
-					paidAt: null,
-					periodStart: null,
-					periodEnd: null,
-					refundedAmount: 0,
-					reviewRequired: false,
-					createdAt,
-					expiresAt: new Date(createdAt.getTime() + ttl),
-					fulfilledAt: null,
-				},
-			});
+			return publicOrder(
+				await db.create<Omit<StoredBusinessOrder, "id">, StoredBusinessOrder>({
+					model: "businessOrder",
+					data: {
+						monitorContext: monitorContext(options.monitor, headers) ?? null,
+						referenceId,
+						checkoutKey,
+						provider: body.provider,
+						productId: product.id,
+						productKey: product.key,
+						parentOrderId: null,
+						product: { ...product, createdAt: product.createdAt.toISOString() },
+						amount: product.amount,
+						currency: product.currency,
+						status: "pending",
+						providerOrderId: null,
+						providerKey: null,
+						checkoutURL: null,
+						paymentId: null,
+						paidAt: null,
+						periodStart: null,
+						periodEnd: null,
+						refundedAmount: 0,
+						reviewRequired: false,
+						createdAt,
+						expiresAt: new Date(createdAt.getTime() + ttl),
+						fulfilledAt: null,
+					},
+				}),
+			);
 		});
 	}
 	async function checkout(referenceId: string, orderId: string) {
@@ -173,12 +188,12 @@ export function createBusinessService<Options extends BetterAuthOptions>(
 			throw new APIError("FORBIDDEN", {
 				message: "Order does not belong to this user",
 			});
-		if (order.status !== "pending") return order;
+		if (order.status !== "pending") return publicOrder(order);
 		if (Date.now() >= order.expiresAt.getTime())
 			throw new APIError("BAD_REQUEST", {
 				message: "Payment window ended; existing payments still reconcile",
 			});
-		if (order.providerOrderId && order.checkoutURL) return order;
+		if (order.providerOrderId && order.checkoutURL) return publicOrder(order);
 		const result = await provider(order.provider).createCheckout(order);
 		const url = new URL(result.url);
 		if (
@@ -194,7 +209,7 @@ export function createBusinessService<Options extends BetterAuthOptions>(
 			if (current.providerOrderId) {
 				if (current.providerOrderId !== result.providerOrderId)
 					throw fail("Provider did not preserve checkout idempotency");
-				return current;
+				return publicOrder(current);
 			}
 			await db.update({
 				model: "businessOrder",
@@ -209,7 +224,7 @@ export function createBusinessService<Options extends BetterAuthOptions>(
 					checkoutURL: result.url,
 				},
 			});
-			return getOrder(orderId, db);
+			return publicOrder(await getOrder(orderId, db));
 		});
 	}
 	async function recordEvent(
@@ -248,7 +263,8 @@ export function createBusinessService<Options extends BetterAuthOptions>(
 		const initial = await getOrder(orderId);
 		return transaction(initial.referenceId, async (db) => {
 			const order = await getOrder(orderId, db);
-			if (order.fulfilledAt || order.status === "refunded") return order;
+			if (order.fulfilledAt || order.status === "refunded")
+				return publicOrder(order);
 			if (!order.paidAt || !order.paymentId)
 				throw fail("Cannot fulfill an unpaid order");
 			const { product } = order;
@@ -297,7 +313,7 @@ export function createBusinessService<Options extends BetterAuthOptions>(
 					fulfilledAt: new Date(),
 				},
 			});
-			return getOrder(order.id, db);
+			return publicOrder(await getOrder(order.id, db));
 		});
 	}
 	async function applyPayment(
@@ -382,6 +398,11 @@ export function createBusinessService<Options extends BetterAuthOptions>(
 					status: "paid",
 				},
 			});
+			await monitor.payment(db, {
+				...order,
+				paymentId: payment.paymentId,
+				paidAt: payment.paidAt,
+			});
 			const customer = await db.findOne<{ lastPaidAt: Date | null }>({
 				model: "businessCustomer",
 				where: [{ field: "referenceId", value: order.referenceId }],
@@ -410,7 +431,8 @@ export function createBusinessService<Options extends BetterAuthOptions>(
 			throw new APIError("FORBIDDEN", {
 				message: "Order does not belong to this user",
 			});
-		if (order.fulfilledAt || order.status === "refunded") return order;
+		if (order.fulfilledAt || order.status === "refunded")
+			return publicOrder(order);
 		if (order.paidAt) return fulfill(orderId);
 		if (!order.providerOrderId)
 			throw new APIError("BAD_REQUEST", {
@@ -455,7 +477,7 @@ export function createBusinessService<Options extends BetterAuthOptions>(
 					throw fail("Renewal payment belongs to another purchase");
 				return existing;
 			}
-			return db.create<Omit<BusinessOrder, "id">, BusinessOrder>({
+			return db.create<Omit<StoredBusinessOrder, "id">, StoredBusinessOrder>({
 				model: "businessOrder",
 				data: {
 					referenceId: original.referenceId,
@@ -464,6 +486,7 @@ export function createBusinessService<Options extends BetterAuthOptions>(
 					productId: original.productId,
 					productKey: original.productKey,
 					parentOrderId: original.id,
+					monitorContext: original.monitorContext ?? null,
 					product: original.product,
 					amount: original.amount,
 					currency: original.currency,
@@ -506,7 +529,7 @@ export function createBusinessService<Options extends BetterAuthOptions>(
 			if (!order.paidAt || !order.paymentId)
 				throw fail("Payment must be reconciled before its refund");
 			if (!(await recordEvent(db, order, "refund", refund.refundId, refund)))
-				return order;
+				return publicOrder(order);
 			const refundedAmount = order.refundedAmount + refund.amount;
 			if (
 				!Number.isSafeInteger(refundedAmount) ||
@@ -566,7 +589,7 @@ export function createBusinessService<Options extends BetterAuthOptions>(
 						refundedAmount === order.amount ? "refunded" : "partially_refunded",
 				},
 			});
-			return getOrder(orderId, db);
+			return publicOrder(await getOrder(orderId, db));
 		});
 	}
 	async function listOrders(
@@ -583,13 +606,15 @@ export function createBusinessService<Options extends BetterAuthOptions>(
 			where.push({ field: "referenceId", value: input.referenceId });
 		if (input.status) where.push({ field: "status", value: input.status });
 		return {
-			orders: await adapter.findMany<BusinessOrder>({
-				model: "businessOrder",
-				where,
-				limit,
-				offset,
-				sortBy: { field: "createdAt", direction: "desc" },
-			}),
+			orders: (
+				await adapter.findMany<StoredBusinessOrder>({
+					model: "businessOrder",
+					where,
+					limit,
+					offset,
+					sortBy: { field: "createdAt", direction: "desc" },
+				})
+			).map(publicOrder),
 			total: await adapter.count({ model: "businessOrder", where }),
 			limit,
 			offset,

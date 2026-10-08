@@ -7,6 +7,7 @@ import { useState } from "react";
 import { AuditPanel } from "@/components/audit-panel";
 import { CreditsPanel } from "@/components/credits-panel";
 import { MembershipsPanel } from "@/components/memberships-panel";
+import { MonitorPanel } from "@/components/monitor-panel";
 import { OrdersPanel } from "@/components/orders-panel";
 import { Overview } from "@/components/overview";
 import { ProductsPanel } from "@/components/products-panel";
@@ -192,6 +193,7 @@ function Workspace({ email }: { email: string }) {
 								["memberships", "会员"],
 								["credits", "积分"],
 								["audit", "审计"],
+								["monitor", "监控"],
 							].map(([value, label]) => (
 								<TabsTrigger key={value} value={value!}>
 									{label}
@@ -219,6 +221,9 @@ function Workspace({ email }: { email: string }) {
 					</TabsContent>
 					<TabsContent value="audit">
 						<AuditPanel key={refresh} />
+					</TabsContent>
+					<TabsContent value="monitor">
+						<MonitorPanel key={refresh} />
 					</TabsContent>
 				</Tabs>
 			</main>

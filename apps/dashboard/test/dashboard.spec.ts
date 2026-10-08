@@ -9,6 +9,101 @@ import { closeAuth, getAuth } from "../lib/auth";
 const customerEmail = "created@dashboard-e2e.example";
 const productName = "验收月度会员";
 
+test("monitor displays actual configuration, isolated errors and audited retry actions", async ({
+	page,
+}) => {
+	await login(page);
+	await page.getByRole("tab", { name: "监控", exact: true }).click();
+	await expect(page.getByText("暂无成功投递", { exact: true })).toBeVisible();
+	await expect(page.getByText("没有符合筛选条件的投递记录。")).toBeVisible();
+	expect(await page.content()).not.toContain(process.env.APP_MONITOR_TOKEN!);
+	const endpoint = "**/api/auth/business/admin/monitor/status";
+	await page.route(endpoint, (route) =>
+		route.fulfill({ json: { enabled: false } }),
+	);
+	await page.getByRole("button", { name: "刷新状态", exact: true }).click();
+	await expect(
+		page.getByText("监控已关闭，暂停采集与投递，已有记录保留。"),
+	).toBeVisible();
+	await page.unroute(endpoint);
+	await page.route(endpoint, (route) =>
+		route.fulfill({ status: 503, json: { message: "测试接入请求失败" } }),
+	);
+	await page.getByRole("button", { name: "刷新状态", exact: true }).click();
+	await expect(
+		page.getByRole("alert").filter({ hasText: "测试接入请求失败" }),
+	).toBeVisible();
+	await page.unroute(endpoint);
+	const eventId = crypto.randomUUID();
+	const now = new Date();
+	const userId = process.env.DASHBOARD_E2E_USER_ID!;
+	const { adapter } = await getAuth().$context;
+	try {
+		await adapter.create({
+			model: "businessMonitorEvent",
+			data: {
+				eventId,
+				eventKey: eventId,
+				siteId: "dashboard-test",
+				eventType: "signup_confirmed",
+				userId,
+				orderId: null,
+				payload: {
+					type: "signup_confirmed",
+					record: {
+						siteId: "dashboard-test",
+						userId,
+						eventId,
+						occurredAt: now.toISOString(),
+						environment: "development",
+						method: "email",
+					},
+				},
+				status: "failed",
+				attempts: 1,
+				firstAttemptAt: now,
+				lastAttemptAt: now,
+				nextAttemptAt: null,
+				leaseToken: null,
+				leaseExpiresAt: null,
+				lastError: "collector_http_error",
+				lastHttpStatus: 403,
+				deliveredAt: null,
+				createdAt: now,
+			},
+		});
+		await page.getByRole("button", { name: "刷新状态", exact: true }).click();
+		await page.getByLabel("投递状态", { exact: true }).selectOption("failed");
+		await page.getByRole("button", { name: "筛选", exact: true }).click();
+		await expect(page.getByText("接收服务拒绝请求 (403)")).toBeVisible();
+		await page.getByRole("button", { name: "详情", exact: true }).click();
+		const dialog = page.getByRole("dialog");
+		await expect(dialog.getByText(eventId, { exact: true })).toBeVisible();
+		await dialog.getByLabel("补发原因").fill("测试凭证配置已修复");
+		await dialog.getByRole("button", { name: "安排补发", exact: true }).click();
+		await expect(
+			page.getByText("补发已安排，后台任务将继续投递。"),
+		).toBeVisible();
+		expect(
+			await adapter.count({
+				model: "adminAuditLog",
+				where: [{ field: "action", value: "monitor.retry" }],
+			}),
+		).toBe(1);
+		await noPageOverflow(page);
+		await screenshot(page, "desktop-monitor");
+		await page.setViewportSize({ width: 390, height: 844 });
+		await noPageOverflow(page);
+		await screenshot(page, "mobile-monitor");
+	} finally {
+		await adapter.deleteMany({
+			model: "businessMonitorEvent",
+			where: [{ field: "eventId", value: eventId }],
+		});
+		await closeAuth();
+	}
+});
+
 async function login(page: Page, role: "admin" | "user" = "admin") {
 	await page.goto("/");
 	await page
@@ -54,6 +149,8 @@ test.describe("real SDK dashboard", () => {
 		for (const path of [
 			"/business/admin/overview",
 			"/business/admin/orders",
+			"/business/admin/monitor/status",
+			"/business/admin/monitor/events",
 			"/admin/list-users",
 		]) {
 			expect((await page.request.get(`/api/auth${path}`)).status()).toBe(401);
@@ -68,6 +165,8 @@ test.describe("real SDK dashboard", () => {
 			"/business/admin/overview",
 			"/business/admin/orders",
 			"/business/admin/audit",
+			"/business/admin/monitor/status",
+			"/business/admin/monitor/events",
 			"/admin/list-users",
 		]) {
 			expect((await page.request.get(`/api/auth${path}`)).status()).toBe(403);
