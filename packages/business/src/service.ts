@@ -403,6 +403,21 @@ export function createBusinessService<Options extends BetterAuthOptions>(
 		);
 		return applyPayment(orderId, payment);
 	}
+	/** A customer may request verification of their own persisted checkout, never assert payment. */
+	async function completeCheckout(referenceId: string, orderId: string) {
+		const order = await getOrder(orderId);
+		if (order.referenceId !== referenceId)
+			throw new APIError("FORBIDDEN", {
+				message: "Order does not belong to this user",
+			});
+		if (order.fulfilledAt || order.status === "refunded") return order;
+		if (order.paidAt) return fulfill(orderId);
+		if (!order.providerOrderId)
+			throw new APIError("BAD_REQUEST", {
+				message: "Checkout has not been created",
+			});
+		return confirmPayment(orderId, order.providerOrderId);
+	}
 	async function confirmRenewal(orderId: string, reference: string) {
 		const original = await getOrder(orderId);
 		if (!original.paymentId)
@@ -782,6 +797,7 @@ export function createBusinessService<Options extends BetterAuthOptions>(
 		checkout,
 		getOrder,
 		confirmPayment,
+		completeCheckout,
 		confirmRenewal,
 		confirmRefund,
 		fulfill,

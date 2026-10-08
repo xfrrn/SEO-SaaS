@@ -491,4 +491,8 @@ export type StripePlugin<O extends StripeOptions> = ReturnType<
 	typeof stripe<O>
 >;
 
+export {
+	createStripeBusinessProvider,
+	type StripeBusinessProviderOptions,
+} from "./business";
 export type * from "./types";

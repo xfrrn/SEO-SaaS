@@ -3,5 +3,13 @@
   "compilerOptions": {
     "lib": ["esnext", "dom", "dom.iterable"]
   },
-  "include": ["./src", "./package.json"]
+  "include": ["./src", "./package.json"],
+  "references": [
+    {
+      "path": "../business/tsconfig.json"
+    },
+    {
+      "path": "../core/tsconfig.json"
+    }
+  ]
 }

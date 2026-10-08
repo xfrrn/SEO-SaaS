@@ -281,7 +281,7 @@ async function handlePayPalWebhook(request: Request) {
 4. webhook 与对账入口始终验签、查询并核验金额、币种、本地映射及 capture 状态；对已付款、pending、未知结果和延迟通知继续幂等履约或退款。
 5. 上线前明确旧订单政策：按原可信业务创建时间一次性回填期限，或显式将无期限旧订单路由到未启用功能的旧客户端。不得以部署、刷新或重试时间重新开始计时。启用客户端对缺少期限的旧订单会拒绝新付款；已有 `expiresAt` 的订单不能通过关闭配置绕过期限。
 
-以上是单独使用 PayPal 客户端时的接入约定：`@app/auth-sdk/paypal` 仅提供期限计算和付款门禁，不创建业务订单表、定时任务，也不决定何时退款。接入应用可以自行实现订单流程，或使用下文 `business` 提供的订单、履约和对账记录；选择后者仍须实现支付适配器。
+以上是单独使用 PayPal 客户端时的接入约定：它不创建业务订单表、定时任务，也不决定何时退款。接入应用可以自行实现订单流程，或使用下文 `business` 及现成的 `createPayPalBusinessProvider` 连接订单、履约和付款核验。
 
 ## 通用订阅
 
@@ -317,7 +317,7 @@ async function handlePayPalWebhook(request: Request) {
 
 ## 组合业务与后台接口
 
-`business` 是一层可选组合插件，复用现有认证、Admin、商品目录、订阅和积分能力。它提供网站的购买、订单履约、查询及管理员 API；仓库的 [Dashboard](../../apps/dashboard/README.md) 已接入管理接口。插件不会自动把 PayPal/Stripe 客户端接成完整收款流程，支付渠道仍由网站配置。
+`business` 是一层可选组合插件，复用现有认证、Admin、商品目录、订阅和积分能力。它提供网站的购买、订单履约、查询及管理员 API。现有 Stripe、PayPal 包各自提供支付适配器；仓库的 [Dashboard](../../apps/dashboard/README.md) 已通过环境变量接入任选一个渠道及 SMTP 邮件，无需另建插件。
 
 ### 启用与迁移
 
@@ -328,7 +328,7 @@ import { subscription } from "@app/auth-sdk/subscription";
 import { credits } from "@app/auth-sdk/credits";
 import { business } from "@app/auth-sdk/business";
 import { database } from "./database"; // 网站提供的真实 SQL 连接/事务适配器
-import { paymentProviders } from "./payment-providers"; // 网站实现，契约见下文
+import { paymentProviders } from "./payment-providers"; // 用下文现成适配器配置
 
 export const auth = betterAuth({
   database,
@@ -338,7 +338,7 @@ export const auth = betterAuth({
     admin({ auditLog: true }),
     subscription({ catalog: true }),
     credits(),
-    business({ providers: paymentProviders, orderTtlMs: 30 * 60_000 }),
+    business({ providers: paymentProviders, orderTtlMs: 60 * 60_000 }),
   ],
 });
 ```
@@ -407,7 +407,46 @@ const product = await auth.api.saveBusinessProduct({
 
 ### 支付适配器契约
 
-`paymentProviders` 的类型为从 `@app/auth-sdk/business` 导入的 `Record<string, BusinessPaymentProvider>`。对象的键是下单时使用的 `provider`；只登记应用自己实现并验证过的支付集成。
+`paymentProviders` 的类型为从 `@app/auth-sdk/business` 导入的 `Record<string, BusinessPaymentProvider>`。对象的键是下单时使用的 `provider`。可选择以下现成适配器；密钥和回调地址只在服务器配置：
+
+```ts
+// payment-providers.ts：Stripe 方案，需要安装 stripe peer dependency。
+import Stripe from "stripe";
+import { createStripeBusinessProvider } from "@app/auth-sdk/stripe";
+
+export const paymentProviders = {
+  stripe: createStripeBusinessProvider({
+    stripeClient: new Stripe(process.env.STRIPE_SECRET_KEY!),
+    returnURL: "https://example.com/payment/return",
+    cancelURL: "https://example.com/pricing",
+  }),
+};
+```
+
+```ts
+// 或使用 PayPal，替换上面的配置。
+import { createPayPalClient, createPayPalBusinessProvider } from "@app/auth-sdk/paypal";
+
+export const paymentProviders = {
+  paypal: createPayPalBusinessProvider({
+    client: createPayPalClient({
+      clientId: process.env.PAYPAL_CLIENT_ID!,
+      clientSecret: process.env.PAYPAL_CLIENT_SECRET!,
+      webhookId: process.env.PAYPAL_WEBHOOK_ID!,
+      environment: "sandbox", // 正式收款使用 live 及相应凭据
+      orderExpiration: true,
+    }),
+    returnURL: "https://example.com/payment/return",
+    cancelURL: "https://example.com/pricing",
+  }),
+};
+```
+
+这两个适配器销售一次性商品：积分、指定天数会员或组合套餐；会员商品不等于自动续费订阅。Stripe 在创建 checkout 时要求订单至少剩余 30 分钟，建议 `orderTtlMs: 60 * 60_000`，剩余不足时应创建新购买操作。PayPal 在捕获前回查归属和金额，并使用原订单期限及稳定幂等键；已完成付款允许过期后对账。PayPal 按支持币种转换最小单位，HUF/TWD 要求整单位价格。现成适配器未实现 `verifyRefund`，退款核对需另接可信退款查询；不提供发起退款接口。
+
+目录金额按 ISO 4217 最小单位存储，不能使用浏览器地区习惯的四舍五入位数解释价格。Stripe 适配器处理 ISK/UGX 和 MGA 的渠道单位差异，拒绝非整单位 MGA 及尚未支持的三/四位小数币种。已有 HUF、MGA 等商品若曾通过旧版面板录入，应在启用收款前核对价格；此修改不会重写历史订单金额。
+
+如果需要其他已有渠道，可实现下述契约：
 
 | 方法 | 应用必须完成的工作 |
 | --- | --- |
@@ -417,7 +456,7 @@ const product = await auth.api.saveBusinessProduct({
 
 渠道通知入口必须校验签名，并结合渠道回查核对商户、订单归属、用户、金额、币种和实际收款状态。`reference` 只是供服务端检索的渠道交易/通知标识，不是“已经付款”的证明；不得把浏览器返回参数或未验签 webhook 原样变成 `VerifiedPayment`。业务插件会进一步比对已存 `providerOrderId`、金额、币种、付款 ID 和时间，但无法替适配器证明外部交易真实性。
 
-PayPal 可复用现有 `createOrder/getOrder/captureOrder/verifyWebhook`；金额转为 PayPal 所需十进制字符串，期限使用已保存的 `order.expiresAt`。Stripe 可复用已有 Checkout、订阅生命周期、Billing Portal 与验签流程。SDK 没有自动提供上述 `BusinessPaymentProvider` 实现，也没有新增渠道扣款、关闭渠道订单或发起退款的方法。
+现成适配器已复用 PayPal Orders 和 Stripe Checkout；原 Stripe 订阅生命周期和 Billing Portal API 保持不变。Webhook 路由由宿主应用挂载，Dashboard 提供 `/api/payments/webhook`，先验签再回查付款，不依赖用户一定返回成功页面。
 
 ### 下单、付款与履约
 
@@ -441,7 +480,28 @@ const checkout = await auth.api.checkoutBusinessOrder({
 
 本地订单默认 30 分钟后不能再发起 checkout，可用 `orderTtlMs` 调整新订单期限。重试不重算期限，也不因修改商品而改价格；并发创建 checkout 依赖适配器复用同一个渠道幂等键。已付款、结果未知或延迟通知继续核验，超过本地期限不代表平台已取消订单。
 
-付款确认仅供受信服务端执行，没有对应浏览器/HTTP 写入口：
+浏览器注册 `businessClient()` 后可直接调用统一接口，无需传金额或渠道付款凭据：
+
+```ts
+const { data: channels } = await authClient.business.providers();
+const { data: products } = await authClient.business.products();
+// 使用当前商品版本和 channels.providers 中的渠道；purchaseAttemptId 持久化后重试复用。
+const { data: order, error } = await authClient.business.orders.create({
+  productId: selectedProductId,
+  provider: selectedProvider,
+  idempotencyKey: purchaseAttemptId,
+});
+if (error) throw new Error(error.message);
+const { data: checkout, error: checkoutError } = await authClient.business.orders.checkout({ orderId: order.id });
+if (checkoutError) throw new Error(checkoutError.message);
+if (checkout.status === "pending" && checkout.checkoutURL) window.location.assign(checkout.checkoutURL);
+// 渠道返回网站后，以原登录会话查询。orderId 只用于选订单，服务端重新核验渠道。
+await authClient.business.orders.complete({ orderId: order.id });
+```
+
+`completeBusinessOrder`（POST `/business/orders/complete`）只允许查询当前用户的订单，使用服务器保存的渠道订单号核验、履约；失败后保留原订单重试。它不能由浏览器指定付款 ID、金额或把订单直接标记为成功。没有登录时应先恢复原购买账号会话。
+
+底层付款确认仍仅供受信服务端执行，没有对应浏览器/HTTP 写入口：
 
 ```ts
 // 网站已验签的通知处理器或可信对账任务。
@@ -481,6 +541,8 @@ await auth.api.confirmBusinessRefund({
 | 方法 | 输入与用途 |
 | --- | --- |
 | `listBusinessProducts`（GET `/business/products`） | 普通用户查询上架商品，`query: { limit?, offset? }` |
+| `listBusinessProviders`（GET `/business/providers`） | 当前已启用的渠道名称，不包含密钥 |
+| `completeBusinessOrder`（POST `/business/orders/complete`） | `body: { orderId }`，重新核验并履约当前用户的订单 |
 | `listOwnBusinessOrders`（GET `/business/orders`） | 当前用户订单，`query: { limit?, offset? }` |
 | `listBusinessCatalog`（GET `/business/admin/products`） | 管理员查询各商品最新版本，包含下架商品 |
 | `saveBusinessProduct`（POST `/business/admin/products/save`） | `body: { operationId, reason, product }`，保存完整新版本 |
@@ -522,6 +584,6 @@ pnpm typecheck
 pnpm pack:sdk
 ```
 
-PayPal 实现和测试分别位于 `packages/paypal/src/index.ts`、`packages/paypal/test/paypal.test.ts`；通用订阅实现在 `packages/subscription/src`，credits 实现在 `packages/credits/src`，组合业务实现在 `packages/business/src`。`pnpm test:sdk` 同时运行 SDK 入口、独立 PayPal、通用订阅、credits、business 和 Admin 审计测试。完整 SDK 安装包会包含这些独立包。
+PayPal 实现和测试分别位于 `packages/paypal/src/index.ts`、`packages/paypal/test/paypal.test.ts`；通用订阅实现在 `packages/subscription/src`，credits 实现在 `packages/credits/src`，组合业务实现在 `packages/business/src`。两个支付适配器位于各自包的 `src/business.ts`。`pnpm test:sdk` 同时运行 SDK 入口、独立 PayPal、Stripe 业务支付适配器、通用订阅、credits、business 和 Admin 审计测试。完整 SDK 安装包会包含这些独立包。
 
 请用根目录 `pack:sdk` 生成完整安装包；直接打包本目录只包含入口层。其他独立插件仍保留在工作区中，可按需构建和接入。

@@ -28,7 +28,12 @@ export interface PayPalOrder {
 		custom_id?: string;
 		amount?: PayPalAmount;
 		payments?: {
-			captures?: { id: string; status: string; amount: PayPalAmount }[];
+			captures?: {
+				id: string;
+				status: string;
+				amount: PayPalAmount;
+				create_time?: string;
+			}[];
 		};
 	}[];
 }
@@ -133,6 +138,8 @@ function isOrder(value: unknown): value is PayPalOrder {
 												isRecord(capture) &&
 												typeof capture.id === "string" &&
 												typeof capture.status === "string" &&
+												(capture.create_time === undefined ||
+													typeof capture.create_time === "string") &&
 												isAmount(capture.amount),
 										))))),
 				)))
@@ -156,12 +163,15 @@ function validateReturnURL(value: string) {
 	const url = new URL(value);
 	if (
 		(url.protocol !== "https:" &&
-			!(url.protocol === "http:" && url.hostname === "localhost")) ||
+			!(
+				url.protocol === "http:" &&
+				["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)
+			)) ||
 		url.username ||
 		url.password
 	) {
 		throw new Error(
-			"PayPal return URLs require HTTPS (or localhost for testing)",
+			"PayPal return URLs require HTTPS (or loopback for testing)",
 		);
 	}
 }
@@ -451,3 +461,4 @@ export function createPayPalClient(options: PayPalOptions) {
 		},
 	};
 }
+export { createPayPalBusinessProvider } from "./business";

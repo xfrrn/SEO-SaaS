@@ -109,6 +109,50 @@ async function setup(basePath = "/api/auth") {
 }
 
 describe("business workflows", () => {
+	it("exposes configured channels and verifies only the signed-in customer's persisted checkout", async () => {
+		const { auth, client, headers, buy, payments, adapter, user } =
+			await setup();
+		const fetchOptions = { headers, throw: true as const };
+		expect(await client.business.providers({ fetchOptions })).toEqual({
+			providers: ["test"],
+		});
+		const order = await buy();
+		await expect(
+			auth.api.completeBusinessOrder({
+				headers: new Headers(),
+				body: { orderId: order.id },
+			}),
+		).rejects.toThrow();
+		await adapter.update({
+			model: "businessOrder",
+			where: [{ field: "id", value: order.id }],
+			update: { referenceId: "someone-else" },
+		});
+		await expect(
+			auth.api.completeBusinessOrder({ headers, body: { orderId: order.id } }),
+		).rejects.toThrow("Order does not belong");
+		expect(payments.verifyPayment).not.toHaveBeenCalled();
+		await adapter.update({
+			model: "businessOrder",
+			where: [{ field: "id", value: order.id }],
+			update: { referenceId: user.id },
+		});
+		const completed = await client.business.orders.complete({
+			orderId: order.id,
+			fetchOptions,
+		});
+		expect(completed.status).toBe("fulfilled");
+		expect(payments.verifyPayment).toHaveBeenCalledWith({
+			order: expect.objectContaining({ id: order.id }),
+			reference: order.providerOrderId,
+		});
+		await client.business.orders.complete({ orderId: order.id, fetchOptions });
+		expect(payments.verifyPayment).toHaveBeenCalledTimes(1);
+		expect((await createCreditsService(adapter).balance(user.id)).balance).toBe(
+			productInput.credits,
+		);
+	});
+
 	it("preserves JSON dates through the browser client without changing ordinary response dates", async () => {
 		const { auth, client, user, headers, product, makeAdmin, pay } =
 			await setup("/internal/auth");

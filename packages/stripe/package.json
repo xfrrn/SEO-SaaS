@@ -67,12 +67,19 @@
     "better-auth": "workspace:*",
     "better-call": "catalog:",
     "stripe": "^22.0.1",
-    "tsdown": "catalog:"
+    "tsdown": "catalog:",
+    "@app/business": "workspace:*"
   },
   "peerDependencies": {
     "@better-auth/core": "workspace:^",
     "better-auth": "workspace:^",
     "better-call": "catalog:",
-    "stripe": "^18 || ^19 || ^20 || ^21 || ^22"
+    "stripe": "^18 || ^19 || ^20 || ^21 || ^22",
+    "@app/business": "workspace:^"
+  },
+  "peerDependenciesMeta": {
+    "@app/business": {
+      "optional": true
+    }
   }
 }

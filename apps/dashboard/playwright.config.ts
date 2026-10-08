@@ -11,6 +11,13 @@ const directory = resolve(__dirname, ".cache", `e2e-${run}`);
 mkdirSync(directory, { recursive: true });
 // Never read developer database or administrator credentials for browser tests.
 const environment = {
+	PAYMENT_PROVIDER: "none",
+	SMTP_HOST: "",
+	SMTP_PORT: "",
+	SMTP_SECURE: "",
+	SMTP_USER: "",
+	SMTP_PASSWORD: "",
+	EMAIL_FROM: "",
 	DASHBOARD_E2E_RUN: run,
 	DASHBOARD_E2E_DIRECTORY: directory,
 	DASHBOARD_E2E_PASSWORD:

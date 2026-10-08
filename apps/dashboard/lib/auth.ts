@@ -9,9 +9,14 @@ import { subscription } from "@app/auth-sdk/subscription";
 import Database from "better-sqlite3";
 import { Pool } from "pg";
 import { readAuthConfig } from "./auth-config.ts";
+import { createEmailHooks, readEmailConfig } from "./email.ts";
+import { createPayments } from "./payments.ts";
 
 function createAuth() {
 	const config = readAuthConfig();
+	const emailConfig = readEmailConfig();
+	const email = emailConfig ? createEmailHooks(emailConfig) : undefined;
+	const payments = getPayments();
 	let database: Pool | Database.Database;
 	if (config.database.kind === "postgres") {
 		const pool = new Pool({
@@ -40,22 +45,27 @@ function createAuth() {
 		secret: config.secret,
 		baseURL: config.baseURL,
 		basePath: "/api/auth",
+		emailVerification: email?.emailVerification,
 		emailAndPassword: {
 			enabled: true,
-			disableSignUp: true,
+			disableSignUp: !emailConfig,
+			requireEmailVerification: !!emailConfig,
+			revokeSessionsOnPasswordReset: true,
+			...email?.emailAndPassword,
 			minPasswordLength: 12,
 		},
 		plugins: [
 			admin({ auditLog: true }),
 			subscription({ catalog: true }),
 			credits(),
-			business({ providers: {} }),
+			business({ providers: payments.providers, orderTtlMs: 60 * 60_000 }),
 			nextCookies(),
 		],
 	});
 }
 
 let auth: ReturnType<typeof createAuth> | undefined;
+let payments: ReturnType<typeof createPayments> | undefined;
 let closeDatabase: (() => void | Promise<void>) | undefined;
 
 /** Create the real SDK server on first use; never migrate or seed during a request. */
@@ -63,9 +73,15 @@ export function getAuth() {
 	return (auth ??= createAuth());
 }
 
+/** Use the same selected provider for checkout and webhook verification. */
+export function getPayments() {
+	return (payments ??= createPayments(readAuthConfig().baseURL));
+}
+
 /** Release the setup CLI's database resources so it can terminate cleanly. */
 export async function closeAuth() {
 	await closeDatabase?.();
 	closeDatabase = undefined;
 	auth = undefined;
+	payments = undefined;
 }

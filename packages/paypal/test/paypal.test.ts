@@ -236,6 +236,8 @@ describe("PayPal Orders SDK", () => {
 	it.each([
 		"javascript:alert(1)",
 		"http://example.com/return",
+		"http://localhost.attacker.test/return",
+		"http://127.0.0.2/return",
 		"//example.com",
 		"not-a-url",
 	])("rejects unsafe return and cancellation URLs", async (url) => {
@@ -249,13 +251,17 @@ describe("PayPal Orders SDK", () => {
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
-	it("allows localhost HTTP for development", async () => {
+	it.each([
+		"localhost",
+		"127.0.0.1",
+		"[::1]",
+	])("allows loopback HTTP for development at %s", async (host) => {
 		const client = createPayPalClient(credentials);
 		tokenThen({ id: "ORDER123", status: "CREATED" });
 		await client.createOrder({
 			...orderInput,
-			returnURL: "http://localhost:3000/paypal/return",
-			cancelURL: "http://localhost:3000/paypal/cancel",
+			returnURL: `http://${host}:3000/paypal/return`,
+			cancelURL: `http://${host}:3000/paypal/cancel`,
 		});
 		expect(fetchMock).toHaveBeenCalledTimes(2);
 	});

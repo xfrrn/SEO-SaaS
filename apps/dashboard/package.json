@@ -29,7 +29,10 @@
     "react-dom": "catalog:react19",
     "recharts": "3.10.1",
     "tailwind-merge": "2.6.1",
-    "tailwindcss-animate": "1.0.7"
+    "tailwindcss-animate": "1.0.7",
+    "stripe": "^22.0.1",
+    "@better-auth/stripe": "workspace:*",
+    "nodemailer": "10.0.15"
   },
   "devDependencies": {
     "@playwright/test": "1.58.2",

@@ -33,9 +33,28 @@ pnpm dashboard:setup
 pnpm dashboard:dev
 ```
 
-访问 `http://127.0.0.1:3001`，使用初始化时设置的凭据登录。`BETTER_AUTH_URL` 与浏览器访问地址应保持一致，不要混用 `localhost` 与 `127.0.0.1`。初始化完成后从 `.env.local` 移除 `DASHBOARD_ADMIN_PASSWORD`；运行应用无需保留初始化凭据。
+访问 `http://127.0.0.1:3001`，使用初始化时设置的凭据登录。已配置邮件时，未验证邮箱的管理员也需要先完成邮件验证；初始化不会自动将邮箱标记为已验证。`BETTER_AUTH_URL` 与浏览器访问地址应保持一致，不要混用 `localhost` 与 `127.0.0.1`。初始化完成后从 `.env.local` 移除 `DASHBOARD_ADMIN_PASSWORD`；运行应用无需保留初始化凭据。
 
-本地 SQLite 文件路径相对于后台工作目录 `apps/dashboard`。应用使用真实持久化 SQLite，不是内存演示库；`NODE_ENV=production` 明确禁止 SQLite，生产配置 PostgreSQL。应用默认关闭公开注册，不会自动创建管理员、迁移数据库或发放测试积分。
+本地 SQLite 文件路径相对于后台工作目录 `apps/dashboard`。应用使用真实持久化 SQLite，不是内存演示库；`NODE_ENV=production` 明确禁止 SQLite，生产配置 PostgreSQL。本地未配置邮件时关闭公开注册；配置完整后启用邮箱注册和验证。应用不会自动创建管理员、迁移数据库或发放测试积分。
+
+## 注册邮件与密码重置
+
+使用通用 SMTP，可接入现有邮箱服务，不需要第三方登录配置：
+
+| 环境变量 | 用途 |
+| --- | --- |
+| `SMTP_HOST` | SMTP 主机名，不包含协议或端口 |
+| `SMTP_PORT` | 默认 `587`；按邮件服务要求填写 |
+| `SMTP_SECURE` | `false` 使用 STARTTLS，通常配合 `587`；`true` 使用隐式 TLS，`465` 必须为 `true` |
+| `SMTP_USER` | SMTP 登录账号 |
+| `SMTP_PASSWORD` | SMTP 密码或邮件服务生成的授权码 |
+| `EMAIL_FROM` | 服务商允许的发件地址，如 `App <noreply@example.com>` |
+
+生产环境必须配置邮件；本地允许以上主机、账号、密码和发件地址全部留空。配置了一部分会明确报错，不能继续使用不完整配置。更改环境变量后重启应用。
+
+完整配置会启用邮箱密码注册、注册验证邮件、未验证用户登录时重发验证邮件、密码重置邮件。邮箱验证完成前不能登录，密码重置成功后撤销已有会话。SMTP 使用加密传输；`SMTP_SECURE=false` 也要求服务器支持 STARTTLS。
+
+主站前端通过现有 `authClient.signUp.email()`、`signIn.email()`、`sendVerificationEmail()`、`requestPasswordReset()` 和 `resetPassword()` 接口对接自己的注册、验证和重置页面。后台只提供管理员登录入口，不包含主站注册页面，也未启用 Google、GitHub 等第三方登录。
 
 ## 迁移与管理员初始化
 
@@ -47,19 +66,55 @@ pnpm dashboard:dev
 
 ## 接入已有网站
 
-这个应用使用 SDK 入口及 `admin({ auditLog: true })`、`subscription({ catalog: true })`、`credits()`、`business({ providers: {} })`。迁入网站时复用网站的 **同一个 auth 实例、数据库、密钥和认证路由**，将 `getAuth()` 改为返回网站现有实例，并在该实例上补齐上述插件及对应迁移；不要重新维护一套互不相通的管理员和用户库。
+这个应用使用 SDK 入口及 `admin({ auditLog: true })`、`subscription({ catalog: true })`、`credits()`、`business({ providers, orderTtlMs: 60 * 60_000 })`。`lib/payments.ts` 按环境配置注册 Stripe 或 PayPal 适配器，`lib/email.ts` 提供 SMTP 邮件回调。迁入网站时复用网站的 **同一个 auth 实例、数据库、密钥和认证路由**，将 `getAuth()` 改为返回网站现有实例，并补齐上述插件、邮件回调、支付路由及对应迁移；不要重新维护一套互不相通的管理员和用户库。
 
-将后台页面放到网站需要的路径（例如 `/admin`），客户端继续使用同源 `/api/auth`；保留已有网站登录方式和用户注册策略。当前独立应用的 `disableSignUp: true` 只用于默认后台部署，不必覆盖主站原有注册策略。已有同源认证路由时复用它，避免安装第二个冲突的 `/api/auth/[...all]`。认证 API 使用 Node.js runtime；权限由服务端检查，前端隐藏按钮不能替代授权。
+将后台页面放到网站需要的路径（例如 `/admin`），客户端继续使用同源 `/api/auth`，付款返回页位于 `/payment/return`，支付通知路由位于 `/api/payments/webhook`。若调整这些路径，同步修改支付适配器的回调地址和渠道后台的通知配置。已有同源认证路由时复用它，避免安装第二个冲突的 `/api/auth/[...all]`。应用路由使用 Node.js runtime；权限由服务端检查，前端隐藏按钮不能替代授权。
 
-浏览器只调用 Admin 和 Business 客户端；付款核验、退款核验没有浏览器写入口。套餐、会员和积分人工操作需要原因和稳定操作 ID，同一操作超时后重试复用原 ID 与载荷；商品使用版本校验，会员调整使用 revision 校验。遇到冲突应刷新数据后重新操作。
+浏览器调用 Admin 和 Business 客户端；购买者可以请求核验自己的订单，但不能提交“已付款”状态、付款金额或收款凭据来直接发放权益。套餐、会员和积分人工操作需要原因和稳定操作 ID，同一操作超时后重试复用原 ID 与载荷；商品使用版本校验，会员调整使用 revision 校验。遇到冲突应刷新数据后重新操作。
 
 未确认操作的重试编号按管理员保存在当前标签页的 `sessionStorage` 中，关闭弹窗或刷新页面后可继续使用。关闭标签页、清理浏览器存储或换浏览器后，应先核对流水与审计，再决定是否重新操作。
 
-## 支付与功能范围
+## 收款配置
 
-默认 `providers: {}` 表示没有配置收款渠道，面板应展示未配置状态；已有历史付款统计仍按实际记录展示。本站点提供经过验证的 `BusinessPaymentProvider` 后，才可进行购买和付款履约。需要复用现有 PayPal/Stripe 封装、服务端验签及付款回查，再在可信回调中调用 Business 的确认方法，不能把浏览器的“付款成功”参数当作收款凭据。
+`PAYMENT_PROVIDER` 选择 `stripe` 或 `paypal`，一次启用一个渠道；留空或 `none` 关闭新购买。只需填写所选渠道的服务端配置，密钥不要使用 `NEXT_PUBLIC_` 前缀，也不要传给浏览器。
 
-保留三类商品（积分、会员、会员＋积分）、到期积分、实际付款触发的赠送、履约重试、已完成退款后的权益核对。不实现 A6 的年付后定时分月赠送，也不实现 A7 的新增渠道自动扣款/直接发起退款。部分退款或已消费积分可能需要人工复核，后台不提供虚假的“一键解决退款”按钮。
+| 渠道 | 环境变量 | 渠道后台需要的通知事件 |
+| --- | --- | --- |
+| Stripe | `STRIPE_SECRET_KEY`、`STRIPE_WEBHOOK_SECRET` | `checkout.session.completed`、`checkout.session.async_payment_succeeded` |
+| PayPal | `PAYPAL_CLIENT_ID`、`PAYPAL_CLIENT_SECRET`、`PAYPAL_WEBHOOK_ID`、`PAYPAL_ENVIRONMENT` | `CHECKOUT.ORDER.APPROVED`、`PAYMENT.CAPTURE.COMPLETED` |
+
+两者的通知地址均为 `https://你的网站域名/api/payments/webhook`。它需要能被支付服务访问；本地回环地址只用于浏览器跳转，不能直接接收外部通知。Stripe 的签名密钥应属于该通知端点。PayPal 的 `WEBHOOK_ID` 是在该应用中创建通知端点所得的 ID，环境默认为 `sandbox`，上线时填写 `live` 并使用对应的正式凭据和通知 ID。
+
+价格、币种、积分数量、会员天数等在后台“商品套餐”维护并发布，结账使用订单保存的套餐快照；不需要为当前一次性购买流程填写 Stripe Price ID。价格必须为正数并符合所选渠道规则。PayPal 支持的币种有明确范围，JPY 使用整数金额，HUF/TWD 也必须是完整货币单位，不能带小数。
+
+目录使用 ISO 最小货币单位；Stripe 自动转换 ISK/UGX、MGA 的渠道计价差异，拒绝非整单位 MGA 和未支持的三/四位小数币种。已有 HUF、MGA 等商品若通过旧版面板录入过，应在开启收款前核对价格；历史订单金额不会自动改写。
+
+通知路由先验签，再查询支付渠道并交给 Business 核验订单和发放权益；处理失败返回 `503`，允许渠道重试。PayPal 已批准但尚未收款的订单由服务端捕获款项，使用稳定请求 ID，超时后禁止新的捕获；已完成付款即使通知晚到仍可核对。浏览器跳回成功页不视为付款凭据。
+
+修改渠道配置后重启。切换渠道前先处理原渠道的待支付、待履约订单及待重试通知；当前只注册所选渠道，切换后无法继续通过本应用核验旧渠道的未处理付款。历史订单和统计仍保留。
+
+## 主站购买接口
+
+主站复用 `lib/auth-client.ts` 或在自己的客户端注册 `businessClient()`。以下接口都需要购买者登录，价格和权益由服务端确定：
+
+| SDK 客户端调用 | 用途 |
+| --- | --- |
+| `authClient.business.providers()` | 返回已启用渠道名称，未配置时为空列表 |
+| `authClient.business.products()` | 查询已发布套餐 |
+| `authClient.business.orders.create({ productId, provider, idempotencyKey })` | 按套餐版本创建属于当前用户的订单 |
+| `authClient.business.orders.checkout({ orderId })` | 创建或取回结账链接，返回订单的 `checkoutURL` |
+| `authClient.business.orders.complete({ orderId })` | 通过 POST 请求服务端核验自己的订单并履约，不接受浏览器声明的付款结果 |
+| `authClient.business.orders()` | 查询当前用户的订单 |
+
+每次明确的新购买生成一个 `idempotencyKey` 并保存，网络失败后用同一编号重试创建；不要在每次点击或重试时生成新编号。跳转到 `checkoutURL` 前检查 SDK 返回的 `error`。用户返回 `/payment/return` 后可点击“查询付款结果”；请求使用登录会话及持久化的渠道订单 ID，返回 URL 中的 `token` 或 `reference` 不决定权益发放。
+
+已验证但履约失败的订单可以在后台重试，重试不会再次收费。渠道通知也会触发同一核验与履约流程，因此用户关闭付款页面不影响已收到通知的订单处理。
+
+## 功能范围
+
+当前两个适配器均使用一次性付款，支持积分、按天会员、会员＋积分套餐；会员到期不会自动扣款，用户可再次购买。订单默认付款窗口为一小时；Stripe 创建结账时要求至少还剩 30 分钟，应在创建订单后立即获取结账链接。
+
+保留到期积分、实际付款触发的赠送、履约重试。Business 底层支持已完成退款的权益核对，但当前 Stripe/PayPal 适配器未提供 `verifyRefund`，通知路由也未接入退款事件，因此不会自动同步渠道退款。渠道退款与相关权益需要人工核对处理，不实现 A6 的年付后定时分月赠送，也不实现 A7 的新增渠道自动扣款/直接发起退款。
 
 ## 检查与构建
 
@@ -70,4 +125,4 @@ pnpm dashboard:test
 pnpm dashboard:build
 ```
 
-浏览器仅需安装一次；已有可用 Chromium 时可跳过安装。配置和金额转换单元测试不连接数据库，初始化测试使用独立 SQLite 文件；界面测试使用隔离的本地数据库和随机凭据。构建前先构建本地 SDK；工作区依赖由根目录 `pnpm-lock.yaml` 管理。
+浏览器仅需安装一次；已有可用 Chromium 时可跳过安装。配置和金额转换单元测试不连接数据库，初始化测试使用独立 SQLite 文件；界面测试使用隔离的本地数据库和随机凭据。支付与邮件测试使用模拟服务响应，不会实际扣款或发送邮件，也不能替代商户自身的沙箱联调。构建前先构建本地 SDK；工作区依赖由根目录 `pnpm-lock.yaml` 管理。

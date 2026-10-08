@@ -13,6 +13,9 @@
     },
     {
       "path": "../core/tsconfig.json"
+    },
+    {
+      "path": "../business/tsconfig.json"
     }
   ]
 }

@@ -28,6 +28,18 @@
   "devDependencies": {
     "tsdown": "catalog:",
     "typescript": "catalog:",
-    "vitest": "catalog:vitest"
+    "vitest": "catalog:vitest",
+    "@app/business": "workspace:*"
+  },
+  "peerDependencies": {
+    "@app/business": "workspace:^"
+  },
+  "peerDependenciesMeta": {
+    "@app/business": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "@better-auth/core": "workspace:^"
   }
 }

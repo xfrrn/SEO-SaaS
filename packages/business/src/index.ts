@@ -122,6 +122,16 @@ export function business(options: BusinessOptions = {}) {
 			assertBusinessDatabase(ctx.adapter);
 		},
 		endpoints: {
+			listBusinessProviders: createAuthEndpoint(
+				"/business/providers",
+				{
+					method: "GET",
+					requireHeaders: true,
+					use: [sessionMiddleware],
+					metadata: { noStore: true },
+				},
+				async () => ({ providers: Object.keys(options.providers ?? {}) }),
+			),
 			listBusinessProducts: createAuthEndpoint(
 				"/business/products",
 				{
@@ -157,6 +167,21 @@ export function business(options: BusinessOptions = {}) {
 				},
 				async (ctx) =>
 					service(ctx).checkout(ctx.context.session.user.id, ctx.body.orderId),
+			),
+			completeBusinessOrder: createAuthEndpoint(
+				"/business/orders/complete",
+				{
+					method: "POST",
+					requireHeaders: true,
+					use: [sessionMiddleware],
+					body: z.object({ orderId: identifier }),
+					metadata: { noStore: true },
+				},
+				async (ctx) =>
+					service(ctx).completeCheckout(
+						ctx.context.session.user.id,
+						ctx.body.orderId,
+					),
 			),
 			listOwnBusinessOrders: createAuthEndpoint(
 				"/business/orders",

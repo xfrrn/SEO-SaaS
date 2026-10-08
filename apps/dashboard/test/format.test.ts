@@ -91,3 +91,24 @@ test("rejects amounts whose minor units overflow the safe integer range", () => 
 		assert.throws(() => parsePrice(input, currency), /超出可用范围/);
 	}
 });
+
+/** @see https://www.six-group.com/dam/download/financial-information/data-center/iso-currrency/lists/list-one.xml */
+test("uses ISO minor units instead of locale display rounding for checkout amounts", () => {
+	for (const currency of [
+		"HUF",
+		"MGA",
+		"AFN",
+		"ALL",
+		"COP",
+		"IDR",
+		"ISK",
+		"UGX",
+	]) {
+		const digits = ["ISK", "UGX"].includes(currency) ? 0 : 2;
+		const input = digits ? "123.45" : "12345";
+		assert.equal(currencyDigits(currency), digits);
+		assert.equal(parsePrice(input, currency), 12345);
+		assert.equal(priceInput(12345, currency), input);
+		assert.equal(money(12345, currency).replace(/[^\d.]/g, ""), input);
+	}
+});

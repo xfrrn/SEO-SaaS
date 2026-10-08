@@ -16,7 +16,7 @@
     "build:sdk": "pnpm --filter @app/auth-sdk... --workspace-concurrency=2 -r build",
     "dev": "pnpm --filter @app/auth-sdk... --parallel -r dev",
     "typecheck": "tsc --build --force && tsc --project packages/app-sdk/tsconfig.test.json --noEmit && tsc --project packages/paypal/tsconfig.test.json --noEmit && tsc --project packages/subscription/tsconfig.test.json --noEmit && tsc --project packages/credits/tsconfig.test.json --noEmit && tsc --project packages/business/tsconfig.test.json --noEmit && pnpm --filter @app/dashboard typecheck",
-    "test:sdk": "vitest run packages/app-sdk/test packages/paypal/test packages/subscription/test packages/credits/test packages/business/test packages/better-auth/src/plugins/admin/audit.test.ts",
+    "test:sdk": "vitest run packages/app-sdk/test packages/paypal/test packages/subscription/test packages/credits/test packages/business/test packages/stripe/test/business.test.ts packages/better-auth/src/plugins/admin/audit.test.ts",
     "test:packaging": "node --test scripts/pack-sdk.test.mjs",
     "pack:sdk": "pnpm build:sdk && node scripts/pack-sdk.mjs",
     "lint": "biome check packages scripts apps/dashboard --error-on-warnings",

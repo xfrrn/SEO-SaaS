@@ -7,17 +7,46 @@ export function formatDate(value: Date | string | null | undefined) {
 }
 
 export function currencyDigits(currency: string) {
-	return (
-		new Intl.NumberFormat("zh-CN", {
-			style: "currency",
-			currency,
-		}).resolvedOptions().maximumFractionDigits ?? 2
-	);
+	// ISO 4217 minor units, not CLDR's display rounding (e.g. HUF/MGA display as whole units).
+	// https://www.six-group.com/dam/download/financial-information/data-center/iso-currrency/lists/list-one.xml
+	const code = currency.toUpperCase();
+	if (
+		[
+			"BIF",
+			"CLP",
+			"DJF",
+			"GNF",
+			"ISK",
+			"JPY",
+			"KMF",
+			"KRW",
+			"PYG",
+			"RWF",
+			"UGX",
+			"UYI",
+			"VND",
+			"VUV",
+			"XAF",
+			"XOF",
+			"XPF",
+		].includes(code)
+	)
+		return 0;
+	if (["BHD", "IQD", "JOD", "KWD", "LYD", "OMR", "TND"].includes(code))
+		return 3;
+	if (["CLF", "UYW"].includes(code)) return 4;
+	return 2;
 }
 
 export function money(amount: number, currency: string) {
 	const [integer, fraction] = priceInput(amount, currency).split(".");
-	return new Intl.NumberFormat("zh-CN", { style: "currency", currency })
+	const digits = currencyDigits(currency);
+	return new Intl.NumberFormat("zh-CN", {
+		style: "currency",
+		currency,
+		minimumFractionDigits: digits,
+		maximumFractionDigits: digits,
+	})
 		.formatToParts(BigInt(integer!))
 		.map((part) => (part.type === "fraction" ? fraction : part.value))
 		.join("");

@@ -21,6 +21,13 @@ test("real setup migrates once, never rewrites existing users, and keeps signup 
 	const password = randomUUID() + randomUUID();
 	const replacement = randomUUID() + randomUUID();
 	const environment = {
+		PAYMENT_PROVIDER: "none",
+		SMTP_HOST: "",
+		SMTP_PORT: "",
+		SMTP_SECURE: "",
+		SMTP_USER: "",
+		SMTP_PASSWORD: "",
+		EMAIL_FROM: "",
 		NODE_ENV: "test" as const,
 		DATABASE_URL: "",
 		DASHBOARD_SQLITE_PATH: database,

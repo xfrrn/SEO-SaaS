@@ -36,7 +36,7 @@ function preserveJSONDates(
 	return value;
 }
 
-/** Add purchase and administrative endpoints; verified payment writes stay server-only. */
+/** Add purchase and administrative endpoints; payment verification stays server-side. */
 export function businessClient() {
 	return {
 		id: "business-client",

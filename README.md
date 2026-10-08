@@ -44,7 +44,7 @@ pnpm dashboard:dev
 
 访问 `http://127.0.0.1:3001`。`dashboard:setup` 会迁移数据库并创建指定的新管理员；请先核对配置的数据库。开发可显式使用本地 SQLite，生产使用 PostgreSQL。接入已有网站时，从 `apps/dashboard/lib/auth.ts` 的 `getAuth()` 和 `lib/auth-client.ts` 开始，复用网站同一个认证实例、数据库和 `/api/auth` 路由，保留服务端权限校验。
 
-支付渠道需要由网站配置，面板不会模拟收款或发起退款。完整配置、初始化、网站接入及测试步骤见 [Dashboard 使用说明](./apps/dashboard/README.md)。Dashboard 源码单独位于工作区，不包含在 `dist/auth-sdk.tgz` 中。
+Dashboard 通过 `PAYMENT_PROVIDER=stripe` 或 `paypal` 选择收款渠道，填写对应密钥并注册付款 webhook 后，网站前端即可调用统一购买接口。邮件使用 SMTP，配置后启用邮箱注册验证和密码重置；生产必须配置邮件，未启用第三方登录。完整环境变量、初始化、网站接入及测试步骤见 [Dashboard 使用说明](./apps/dashboard/README.md)。Dashboard 源码单独位于工作区，不包含在 `dist/auth-sdk.tgz` 中。
 
 ## 打包并接入其他项目
 
@@ -178,11 +178,11 @@ const plugins = [
   admin({ auditLog: true }),
   subscription({ catalog: true }),
   credits(),
-  business({ providers: paymentProviders }),
+  business({ providers: paymentProviders, orderTtlMs: 60 * 60_000 }),
 ];
 ```
 
-`paymentProviders` 将网站现有支付集成适配到 `BusinessPaymentProvider`：创建结账、服务端核验已完成付款、可选的已完成退款核验。插件不提供新的自动扣款或发起退款接口。客户端启用 `businessClient()` 后调用 `/business/*`；管理员接口重新读取可信会话，默认只允许 Admin 配置的管理员，可用 `authorize` 逐操作授权。
+`paymentProviders` 将网站现有支付集成适配到 `BusinessPaymentProvider`。现成的 `createStripeBusinessProvider` 和 `createPayPalBusinessProvider` 在各自已有包中提供一次性结账和付款回查，可销售积分、指定天数会员或组合套餐。客户端启用 `businessClient()` 后查询 `/business/providers`、创建/结账订单，并通过 `/business/orders/complete` 请求核验自己订单；付款事实由服务器验证。宿主 webhook 支持用户关闭页面后的履约。没有新增自动续费或发起退款接口，现成适配器未接退款查询。管理员接口重新读取可信会话，默认只允许 Admin 配置的管理员，可用 `authorize` 逐操作授权。
 
 组合写入要求真实事务和唯一约束。本仓库直接连接的 PostgreSQL、SQLite 可用；内存适配器和没有交互事务的 D1 不支持该组合插件。数据库由网站提供，插件不独立启动服务。会员、积分、订单状态和成功审计在同一事务提交；可信付款记录先保存，发货失败保留已付款状态，管理端可安全重试。
 
