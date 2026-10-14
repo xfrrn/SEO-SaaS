@@ -17,6 +17,11 @@
     "lint:package": "publint run --strict --pack false"
   },
   "exports": {
+    "./waffo": {
+      "dev-source": "./src/waffo.ts",
+      "types": "./dist/waffo.d.mts",
+      "default": "./dist/waffo.mjs"
+    },
     "./monitor": {
       "dev-source": "./src/monitor.ts",
       "types": "./dist/monitor.d.mts",
@@ -105,6 +110,9 @@
   },
   "typesVersions": {
     "*": {
+      "waffo": [
+        "./dist/waffo.d.mts"
+      ],
       "monitor": [
         "./dist/monitor.d.mts"
       ],
@@ -159,6 +167,7 @@
     }
   },
   "dependencies": {
+    "@app/waffo": "workspace:^",
     "@app/business": "workspace:^",
     "@app/credits": "workspace:^",
     "@app/paypal": "workspace:^",

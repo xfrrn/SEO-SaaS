@@ -4,6 +4,11 @@ import {
 	createPayPalClient,
 } from "@app/auth-sdk/paypal";
 import { createStripeBusinessProvider } from "@app/auth-sdk/stripe";
+import {
+	createWaffoBusinessProvider,
+	TaxCategory,
+	WaffoPancake,
+} from "@app/auth-sdk/waffo";
 import Stripe from "stripe";
 import { readPaymentConfig } from "./payment-config.ts";
 
@@ -13,6 +18,37 @@ export function createPayments(baseURL: string) {
 	const providers: Record<string, BusinessPaymentProvider> = {};
 	const returnURL = `${baseURL}/payment/return`;
 	const cancelURL = `${baseURL}/payment/return?canceled=1`;
+	if (config?.provider === "waffo") {
+		const client = new WaffoPancake({
+			merchantId: config.merchantId,
+			privateKey: config.privateKey,
+			fetch: (input, init) =>
+				fetch(input, { ...init, signal: AbortSignal.timeout(15_000) }),
+		});
+		const provider = createWaffoBusinessProvider({
+			client,
+			storeId: config.storeId,
+			productId: config.productId,
+			environment: config.environment,
+			taxCategory: TaxCategory.SaaS,
+			returnURL,
+		});
+		providers.waffo = provider;
+		return {
+			providers,
+			async webhook(request: Request) {
+				const receipt = await provider.verifyWebhook(request);
+				// Pancake delivers the merchant reference, not the checkout session ID.
+				return receipt
+					? {
+							provider: "waffo",
+							orderId: receipt.orderId,
+							reference: undefined,
+						}
+					: null;
+			},
+		};
+	}
 	if (config?.provider === "stripe") {
 		const client = new Stripe(config.secretKey, {
 			timeout: 15_000,

@@ -59,7 +59,10 @@ test("SDK contains custom native packages and preserves optional framework and p
 						...businessClientExport,
 					},
 				},
-				dependencies: { "@app/business": "workspace:^" },
+				dependencies: {
+					"@app/business": "workspace:^",
+					"@app/waffo": "workspace:^",
+				},
 				peerDependencies: {
 					"better-auth": "workspace:^",
 					"@better-auth/stripe": "workspace:^",
@@ -72,6 +75,13 @@ test("SDK contains custom native packages and preserves optional framework and p
 					stripe: { optional: true },
 				},
 				devDependencies: { unused: "99.0.0" },
+			},
+			waffo: {
+				name: "@app/waffo",
+				version: "0.1.0",
+				type: "module",
+				exports: { ".": "./dist/index.mjs" },
+				dependencies: { "@waffo/pancake-ts": "0.26.0" },
 			},
 			business: {
 				name: "@app/business",
@@ -169,16 +179,31 @@ test("SDK contains custom native packages and preserves optional framework and p
 			join(external, "package.json"),
 			JSON.stringify({ name: "shared-runtime", version: "1.2.3" }),
 		);
+		const pancake = join(
+			source,
+			"packages",
+			"waffo",
+			"node_modules",
+			"@waffo",
+			"pancake-ts",
+		);
+		await mkdir(pancake, { recursive: true });
+		await writeFile(
+			join(pancake, "package.json"),
+			JSON.stringify({ name: "@waffo/pancake-ts", version: "0.26.0" }),
+		);
 		const manifest = await stageSDK(source, stage);
 		assert.deepEqual(manifest.bundledDependencies.sort(), [
 			"@app/business",
 			"@app/credits",
 			"@app/subscription",
+			"@app/waffo",
 			"@better-auth/core",
 			"@better-auth/stripe",
 			"better-auth",
 		]);
 		assert.equal(manifest.dependencies["shared-runtime"], "1.2.3");
+		assert.equal(manifest.dependencies["@waffo/pancake-ts"], "0.26.0");
 		assert.equal(manifest.peerDependencies["better-auth"], undefined);
 		assert.equal(manifest.peerDependenciesMeta.stripe.optional, true);
 		assert.equal(manifest.peerDependenciesMeta.react.optional, true);

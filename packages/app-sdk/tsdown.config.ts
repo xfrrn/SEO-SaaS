@@ -20,6 +20,7 @@ export default defineConfig({
 		"./src/client/plugins.ts",
 		"./src/stripe.ts",
 		"./src/paypal.ts",
+		"./src/waffo.ts",
 		"./src/stripe/client.ts",
 	],
 	treeshake: true,

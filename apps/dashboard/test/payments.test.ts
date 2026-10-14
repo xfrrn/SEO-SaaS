@@ -17,11 +17,20 @@ const paypalEnvironment = {
 	PAYPAL_WEBHOOK_ID: "test-webhook",
 	PAYPAL_ENVIRONMENT: "sandbox",
 };
+const waffoEnvironment = {
+	PAYMENT_PROVIDER: "waffo",
+	WAFFO_MERCHANT_ID: "MER_test",
+	WAFFO_PRIVATE_KEY: "server-only-private-key",
+	WAFFO_STORE_ID: "STO_test",
+	WAFFO_PRODUCT_ID: "PROD_test",
+	WAFFO_ENVIRONMENT: "test",
+};
 
 function configure(t: TestContext, values: Record<string, string>) {
 	const keys = new Set([
 		...Object.keys(stripeEnvironment),
 		...Object.keys(paypalEnvironment),
+		...Object.keys(waffoEnvironment),
 	]);
 	const previous = Object.fromEntries(
 		[...keys].map((key) => [key, process.env[key]]),
@@ -52,6 +61,12 @@ test("payment configuration enables only the selected channel and requires its c
 		webhookId: "test-webhook",
 	});
 	for (const input of [
+		...Object.keys(waffoEnvironment)
+			.filter(
+				(key) => key !== "PAYMENT_PROVIDER" && key !== "WAFFO_ENVIRONMENT",
+			)
+			.map((key) => ({ ...waffoEnvironment, [key]: "" })),
+		{ ...waffoEnvironment, WAFFO_ENVIRONMENT: "live" },
 		{ PAYMENT_PROVIDER: "unknown" },
 		{ ...stripeEnvironment, STRIPE_SECRET_KEY: "" },
 		{ ...stripeEnvironment, STRIPE_WEBHOOK_SECRET: "" },
@@ -61,6 +76,19 @@ test("payment configuration enables only the selected channel and requires its c
 		{ ...paypalEnvironment, PAYPAL_ENVIRONMENT: "test" },
 	])
 		assert.throws(() => readPaymentConfig(input));
+	assert.deepEqual(readPaymentConfig(waffoEnvironment), {
+		provider: "waffo",
+		environment: "test",
+		merchantId: "MER_test",
+		privateKey: "server-only-private-key",
+		storeId: "STO_test",
+		productId: "PROD_test",
+	});
+	assert.equal(
+		readPaymentConfig({ ...waffoEnvironment, WAFFO_ENVIRONMENT: "prod" })
+			?.provider,
+		"waffo",
+	);
 	configure(t, { PAYMENT_PROVIDER: "none" });
 	assert.deepEqual(createPayments("https://app.example.com"), {
 		providers: {},

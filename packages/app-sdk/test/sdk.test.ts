@@ -12,6 +12,7 @@ import * as sdkStripe from "@app/auth-sdk/stripe";
 import * as sdkStripeClient from "@app/auth-sdk/stripe/client";
 import * as sdkSubscription from "@app/auth-sdk/subscription";
 import * as sdkSubscriptionClient from "@app/auth-sdk/subscription/client";
+import * as sdkWaffo from "@app/auth-sdk/waffo";
 import * as nativeBusiness from "@app/business";
 import * as nativeBusinessClient from "@app/business/client";
 import * as nativeCredits from "@app/credits";
@@ -19,6 +20,7 @@ import * as nativeCreditsClient from "@app/credits/client";
 import * as nativePayPal from "@app/paypal";
 import * as nativeSubscription from "@app/subscription";
 import * as nativeSubscriptionClient from "@app/subscription/client";
+import * as nativeWaffo from "@app/waffo";
 import * as nativeStripe from "@better-auth/stripe";
 import * as nativeStripeClient from "@better-auth/stripe/client";
 import * as nativeServer from "better-auth";
@@ -44,6 +46,7 @@ describe("SDK native compatibility", () => {
 			[sdkStripe, nativeStripe],
 			[sdkStripeClient, nativeStripeClient],
 			[sdkPayPal, nativePayPal],
+			[sdkWaffo, nativeWaffo],
 			[sdkSubscription, nativeSubscription],
 			[sdkSubscriptionClient, nativeSubscriptionClient],
 		] as const) {

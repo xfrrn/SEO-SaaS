@@ -27,5 +27,18 @@ export function readPaymentConfig(
 			webhookId: required("PAYPAL_WEBHOOK_ID"),
 		} as const;
 	}
-	throw new Error("PAYMENT_PROVIDER must be none, stripe or paypal.");
+	if (provider === "waffo") {
+		const environment = env.WAFFO_ENVIRONMENT?.trim() || "test";
+		if (environment !== "test" && environment !== "prod")
+			throw new Error("WAFFO_ENVIRONMENT must be test or prod.");
+		return {
+			provider,
+			environment,
+			merchantId: required("WAFFO_MERCHANT_ID"),
+			privateKey: required("WAFFO_PRIVATE_KEY"),
+			storeId: required("WAFFO_STORE_ID"),
+			productId: required("WAFFO_PRODUCT_ID"),
+		} as const;
+	}
+	throw new Error("PAYMENT_PROVIDER must be none, stripe, paypal or waffo.");
 }

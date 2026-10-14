@@ -23,10 +23,13 @@ export async function POST(request: Request) {
 		// A notification may beat checkout persistence; a non-2xx response asks the provider to retry.
 		if (!order.providerOrderId)
 			throw new Error("Checkout is not yet persisted");
-		if (order.providerOrderId !== receipt.reference)
+		if (
+			receipt.reference !== undefined &&
+			order.providerOrderId !== receipt.reference
+		)
 			throw new Error("Checkout does not match order");
 		await auth.api.confirmBusinessPayment({
-			body: { orderId: order.id, reference: receipt.reference },
+			body: { orderId: order.id, reference: order.providerOrderId },
 		});
 		return Response.json({ received: true });
 	} catch {

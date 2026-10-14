@@ -5,6 +5,7 @@
   },
   "include": ["./src", "./package.json"],
   "references": [
+    { "path": "../waffo/tsconfig.json" },
     { "path": "../business/tsconfig.json" },
     {
       "path": "../credits/tsconfig.json"

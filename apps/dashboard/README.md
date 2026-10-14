@@ -66,7 +66,7 @@ pnpm dashboard:dev
 
 ## 接入已有网站
 
-这个应用使用 SDK 入口及 `admin({ auditLog: true })`、`subscription({ catalog: true })`、`credits()`、`business({ providers, orderTtlMs: 60 * 60_000 })`。`lib/payments.ts` 按环境配置注册 Stripe 或 PayPal 适配器，`lib/email.ts` 提供 SMTP 邮件回调。迁入网站时复用网站的 **同一个 auth 实例、数据库、密钥和认证路由**，将 `getAuth()` 改为返回网站现有实例，并补齐上述插件、邮件回调、支付路由及对应迁移；不要重新维护一套互不相通的管理员和用户库。
+这个应用使用 SDK 入口及 `admin({ auditLog: true })`、`subscription({ catalog: true })`、`credits()`、`business({ providers, orderTtlMs: 60 * 60_000 })`。`lib/payments.ts` 按环境配置注册 Stripe、PayPal 或 Waffo 适配器，`lib/email.ts` 提供 SMTP 邮件回调。迁入网站时复用网站的 **同一个 auth 实例、数据库、密钥和认证路由**，将 `getAuth()` 改为返回网站现有实例，并补齐上述插件、邮件回调、支付路由及对应迁移；不要重新维护一套互不相通的管理员和用户库。
 
 将后台页面放到网站需要的路径（例如 `/admin`），客户端继续使用同源 `/api/auth`，付款返回页位于 `/payment/return`，支付通知路由位于 `/api/payments/webhook`。若调整这些路径，同步修改支付适配器的回调地址和渠道后台的通知配置。已有同源认证路由时复用它，避免安装第二个冲突的 `/api/auth/[...all]`。应用路由使用 Node.js runtime；权限由服务端检查，前端隐藏按钮不能替代授权。
 
@@ -76,14 +76,26 @@ pnpm dashboard:dev
 
 ## 收款配置
 
-`PAYMENT_PROVIDER` 选择 `stripe` 或 `paypal`，一次启用一个渠道；留空或 `none` 关闭新购买。只需填写所选渠道的服务端配置，密钥不要使用 `NEXT_PUBLIC_` 前缀，也不要传给浏览器。
+`PAYMENT_PROVIDER` 选择 `stripe`、`paypal` 或 `waffo`，一次启用一个渠道；留空或 `none` 关闭新购买。只需填写所选渠道的服务端配置，密钥不要使用 `NEXT_PUBLIC_` 前缀，也不要传给浏览器。
 
 | 渠道 | 环境变量 | 渠道后台需要的通知事件 |
 | --- | --- | --- |
 | Stripe | `STRIPE_SECRET_KEY`、`STRIPE_WEBHOOK_SECRET` | `checkout.session.completed`、`checkout.session.async_payment_succeeded` |
 | PayPal | `PAYPAL_CLIENT_ID`、`PAYPAL_CLIENT_SECRET`、`PAYPAL_WEBHOOK_ID`、`PAYPAL_ENVIRONMENT` | `CHECKOUT.ORDER.APPROVED`、`PAYMENT.CAPTURE.COMPLETED` |
+| Waffo Pancake | `WAFFO_MERCHANT_ID`、`WAFFO_PRIVATE_KEY`、`WAFFO_STORE_ID`、`WAFFO_PRODUCT_ID`、`WAFFO_ENVIRONMENT` | `order.completed` |
 
-两者的通知地址均为 `https://你的网站域名/api/payments/webhook`。它需要能被支付服务访问；本地回环地址只用于浏览器跳转，不能直接接收外部通知。Stripe 的签名密钥应属于该通知端点。PayPal 的 `WEBHOOK_ID` 是在该应用中创建通知端点所得的 ID，环境默认为 `sandbox`，上线时填写 `live` 并使用对应的正式凭据和通知 ID。
+通知地址均为 `https://你的网站域名/api/payments/webhook`。它需要能被支付服务访问。Stripe 的签名密钥应属于该通知端点。PayPal 的 `WEBHOOK_ID` 是在该应用中创建通知端点所得的 ID，环境默认为 `sandbox`，上线时填写 `live` 并使用对应的正式凭据和通知 ID。
+
+Waffo 配置步骤：
+
+1. 在 Waffo「API 与开发」获取 Merchant ID 并创建对应环境的 API Key，将私钥仅保存到服务端 `WAFFO_PRIVATE_KEY`（PEM 或转义 `\n`）。`WAFFO_MERCHANT_ID` 不是 Store ID。
+2. 从选定店铺获取 `WAFFO_STORE_ID`，创建或选用活跃的 **一次性 SaaS 商品**，填写 `WAFFO_PRODUCT_ID`；多个本地套餐共用该商品，订单快照决定价格。不会在启动或结账时自动创建店铺/商品。
+3. `WAFFO_ENVIRONMENT=test` 使用测试私钥；生产改为 `prod` 并更换正式私钥，先完成商户审核、发布商品正式版本。店铺中注册对应环境的 `order.completed` 通知。
+4. `BETTER_AUTH_URL` 必须为绝对 HTTPS 地址，返回页为 `/payment/return`。本地联调使用 ngrok HTTPS 地址；Waffo 支付渠道不接受 HTTP localhost 返回地址。
+
+官方 SDK 固定为 `@waffo/pancake-ts` 0.26.0，需 Node.js 20+，已通过 `@app/auth-sdk/waffo` 导出。配置缺失、私钥错误、HTTP 返回地址、商品不属于店铺或误用订阅商品会明确报错。`WAFFO_ENVIRONMENT` 限制验签和付款核验环境；API 请求所用环境由 API Key 本身决定，不能用环境变量把测试私钥变成正式私钥。
+
+Waffo 目录金额为**税前商品价**，Pancake 结账另计税额。SDK 精确转换 USD/EUR/GBP/HKD/CNY 的两位最小单位和 JPY 整数金额，回查付款时校验税前金额与总额组成；本地订单、统计和监控仍记录税前商品价。其他币种不支持。此版本遵循官方 SDK 已移除 `taxIncluded` 的接口，不采用 skill 旧示例中的含税开关。
 
 价格、币种、积分数量、会员天数等在后台“商品套餐”维护并发布，结账使用订单保存的套餐快照；不需要为当前一次性购买流程填写 Stripe Price ID。价格必须为正数并符合所选渠道规则。PayPal 支持的币种有明确范围，JPY 使用整数金额，HUF/TWD 也必须是完整货币单位，不能带小数。
 
@@ -106,15 +118,15 @@ pnpm dashboard:dev
 | `authClient.business.orders.complete({ orderId })` | 通过 POST 请求服务端核验自己的订单并履约，不接受浏览器声明的付款结果 |
 | `authClient.business.orders()` | 查询当前用户的订单 |
 
-每次明确的新购买生成一个 `idempotencyKey` 并保存，网络失败后用同一编号重试创建；不要在每次点击或重试时生成新编号。跳转到 `checkoutURL` 前检查 SDK 返回的 `error`。用户返回 `/payment/return` 后可点击“查询付款结果”；请求使用登录会话及持久化的渠道订单 ID，返回 URL 中的 `token` 或 `reference` 不决定权益发放。
+每次明确的新购买生成一个 `idempotencyKey` 并保存，网络失败后用同一编号重试创建；不要在每次点击或重试时生成新编号。打开 `checkoutURL` 前检查 SDK 返回的 `error`。Waffo 使用用户点击的 `<a target="_blank" rel="noopener noreferrer">` 在新标签页付款，保留主站页面；没有取消回调，成功后用户点击 Done 才跳回。用户返回 `/payment/return` 后可点击“查询付款结果”；请求使用登录会话及持久化的渠道订单 ID，返回 URL 中的 `token` 或 `reference` 不决定权益发放。
 
 已验证但履约失败的订单可以在后台重试，重试不会再次收费。渠道通知也会触发同一核验与履约流程，因此用户关闭付款页面不影响已收到通知的订单处理。
 
 ## 功能范围
 
-当前两个适配器均使用一次性付款，支持积分、按天会员、会员＋积分套餐；会员到期不会自动扣款，用户可再次购买。订单默认付款窗口为一小时；Stripe 创建结账时要求至少还剩 30 分钟，应在创建订单后立即获取结账链接。
+当前三个适配器均使用一次性付款，支持积分、按天会员、会员＋积分套餐；会员到期不会自动扣款，用户可再次购买。订单默认付款窗口为一小时；Stripe 创建结账时要求至少还剩 30 分钟，Waffo 要求剩余 1 分钟至 24 小时，应在创建订单后立即获取结账链接。Waffo 保存 checkout session ID，通过商户业务订单号回查付款；重复通知和浏览器查询共用业务付款去重，无需新表。
 
-保留到期积分、实际付款触发的赠送、履约重试。Business 底层支持已完成退款的权益核对，但当前 Stripe/PayPal 适配器未提供 `verifyRefund`，通知路由也未接入退款事件，因此不会自动同步渠道退款。渠道退款与相关权益需要人工核对处理，不实现 A6 的年付后定时分月赠送，也不实现 A7 的新增渠道自动扣款/直接发起退款。
+保留到期积分、实际付款触发的赠送、履约重试。Business 底层支持已完成退款的权益核对，但当前 Stripe/PayPal/Waffo 适配器未提供 `verifyRefund`，通知路由也未接入退款事件，因此不会自动同步渠道退款。渠道退款与相关权益需要人工核对处理，不实现 A6 的年付后定时分月赠送，也不实现 A7 的新增渠道自动扣款/直接发起退款。
 
 ## 监控接入
 

@@ -10,6 +10,7 @@ This is the Better Auth repository - a comprehensive authentication framework fo
 - `packages/subscription` - Provider-neutral subscription plugin (`@app/subscription`), shared schema, types, and tests
 - `packages/credits` - Provider-neutral credits balance and append-only ledger plugin (`@app/credits`) and tests
 - `packages/paypal` - Standalone PayPal client (`@app/paypal`) and tests
+- `packages/waffo` - Official Waffo Pancake SDK exports and one-time Business payment adapter (`@app/waffo`), Node.js 20+ only
 - `packages/*` - Database adapters, plugins, integrations
 - `test/` - Shared test workspace
 - `scripts/` - SDK packaging and packaging tests
@@ -69,7 +70,7 @@ When a flow must synthesize an email, use `createPlaceholderEmail` with a stable
 ## Testing
 
 - SDK and native package tests use Vitest; packaging tests use `node:test`
-- `pnpm test:sdk` runs the app SDK, standalone PayPal, subscription, and credits package tests
+- `pnpm test:sdk` runs the app SDK, PayPal, Waffo, Stripe business adapter, subscription, credits, business, and admin audit tests
 - Use `getTestInstance()` from `better-auth/test`. It returns `{ client, auth, sessionSetter, ... }`
 - Pass client plugins via `clientOptions.plugins`
 - NEVER create separate clients with `createAuthClient()` in tests
