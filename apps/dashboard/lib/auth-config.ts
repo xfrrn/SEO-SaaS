@@ -1,5 +1,17 @@
 type Environment = Record<string, string | undefined>;
 
+/** Enable Google only when both server-only OAuth credentials are configured. */
+export function readGoogleConfig(env: Environment = process.env) {
+	const clientId = env.GOOGLE_CLIENT_ID?.trim();
+	const clientSecret = env.GOOGLE_CLIENT_SECRET?.trim();
+	if (!clientId && !clientSecret) return undefined;
+	if (!clientId || !clientSecret)
+		throw new Error(
+			"Set both GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to enable Google login.",
+		);
+	return { clientId, clientSecret, prompt: "select_account" as const };
+}
+
 /** Validate server configuration without opening a database or exposing credentials. */
 export function readAuthConfig(env: Environment = process.env) {
 	const secret = env.BETTER_AUTH_SECRET;

@@ -45,7 +45,7 @@ pnpm dashboard:dev
 
 访问 `http://127.0.0.1:3001`。`dashboard:setup` 会迁移数据库并创建指定的新管理员；请先核对配置的数据库。开发可显式使用本地 SQLite，生产使用 PostgreSQL。接入已有网站时，从 `apps/dashboard/lib/auth.ts` 的 `getAuth()` 和 `lib/auth-client.ts` 开始，复用网站同一个认证实例、数据库和 `/api/auth` 路由，保留服务端权限校验。
 
-Dashboard 通过 `PAYMENT_PROVIDER=stripe`、`paypal` 或 `waffo` 选择收款渠道，填写对应密钥并注册付款 webhook 后，网站前端即可调用统一购买接口。Waffo 还需已有一次性商品、店铺 ID 和 HTTPS 返回地址，目录价为税前价。邮件使用 SMTP，配置后启用邮箱注册验证和密码重置；生产必须配置邮件，未启用第三方登录。完整环境变量、初始化、网站接入及测试步骤见 [Dashboard 使用说明](./apps/dashboard/README.md)。Dashboard 源码单独位于工作区，不包含在 `dist/auth-sdk.tgz` 中。
+Dashboard 通过 `PAYMENT_PROVIDER=stripe`、`paypal` 或 `waffo` 选择收款渠道，填写对应密钥并注册付款 webhook 后，网站前端即可调用统一购买接口。Waffo 还需已有一次性商品、店铺 ID 和 HTTPS 返回地址，目录价为税前价。邮件使用 SMTP，配置后启用邮箱注册验证和密码重置；生产必须配置邮件。Google 登录可通过服务端 `GOOGLE_CLIENT_ID`、`GOOGLE_CLIENT_SECRET` 启用，登录页和已登录管理员的绑定入口同步开放。完整环境变量、初始化、网站接入及测试步骤见 [Dashboard 使用说明](./apps/dashboard/README.md)。Dashboard 源码单独位于工作区，不包含在 `dist/auth-sdk.tgz` 中。
 
 ## 打包并接入其他项目
 
@@ -129,6 +129,21 @@ export const { GET, POST } = toNextJsHandler(auth);
 ```
 
 数据库表需按认证配置和启用的插件预先迁移。SDK 不会自动建表，也不会独立启动 HTTP 服务；由使用方应用挂载认证路由、配置环境变量和管理数据库迁移。
+
+## Google 登录
+
+SDK 已内置 Google OAuth，无需额外认证插件。网站在现有 `betterAuth()` 实例中配置 `socialProviders.google`，浏览器调用 `authClient.signIn.social({ provider: "google", callbackURL, errorCallbackURL })`；完整的服务端、Next.js 路由、React 按钮、账号绑定及排错示例见 [Google 登录接入](./packages/app-sdk/README.md#google-登录)。
+
+自带 Dashboard 在 `apps/dashboard/.env.local` 填写以下两项并重启即可显示 Google 登录按钮：
+
+```dotenv
+GOOGLE_CLIENT_ID=<Google Web application 客户端 ID>
+GOOGLE_CLIENT_SECRET=<该客户端的密钥，仅保存在服务端>
+```
+
+在 Google 控制台登记 `http://127.0.0.1:3001/api/auth/callback/google`，生产改为 `https://你的网站域名/api/auth/callback/google`；地址须与 `BETTER_AUTH_URL` 和实际认证路由一致。Google 要求重定向地址精确匹配，配置步骤见 [Google 官方说明](https://developers.google.com/identity/protocols/oauth2/web-server#creatingcred)。
+
+两项同时留空则关闭；部分填写会报错。现有未验证邮箱的管理员先用邮箱密码登录，再点击顶部“绑定 Google 账号”，使用同邮箱 Google 账号授权。首次 Google 登录创建的普通用户没有管理权限，初始化命令不会将既有普通用户升级为管理员。详情见 [Dashboard Google 配置](./apps/dashboard/README.md#google-登录与账号绑定)。
 
 ## SEO-worker 站点统计
 

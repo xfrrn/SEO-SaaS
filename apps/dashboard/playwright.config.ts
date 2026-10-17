@@ -12,6 +12,8 @@ mkdirSync(directory, { recursive: true });
 // Never read developer database or administrator credentials for browser tests.
 const environment = {
 	PAYMENT_PROVIDER: "none",
+	GOOGLE_CLIENT_ID: "dashboard-browser-test.apps.googleusercontent.com",
+	GOOGLE_CLIENT_SECRET: "dashboard-browser-test-secret",
 	APP_MONITOR_ENABLED: "true",
 	APP_MONITOR_SITE_ID: "dashboard-test",
 	APP_MONITOR_ENDPOINT: "http://127.0.0.1:1/v1/server-events",
@@ -46,7 +48,7 @@ Object.assign(process.env, environment, {
 
 export default defineConfig({
 	testDir: "./test",
-	testMatch: "dashboard.spec.ts",
+	testMatch: ["dashboard.spec.ts", "google.spec.ts"],
 	globalSetup: "./test/e2e-setup.ts",
 	fullyParallel: false,
 	workers: 1,

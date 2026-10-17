@@ -22,6 +22,8 @@ test("real setup migrates once, never rewrites existing users, and keeps signup 
 	const replacement = randomUUID() + randomUUID();
 	const environment = {
 		PAYMENT_PROVIDER: "none",
+		GOOGLE_CLIENT_ID: "",
+		GOOGLE_CLIENT_SECRET: "",
 		SMTP_HOST: "",
 		SMTP_PORT: "",
 		SMTP_SECURE: "",
@@ -73,6 +75,7 @@ test("real setup migrates once, never rewrites existing users, and keeps signup 
 		assert.equal(repeated.status, 1);
 		assert.match(repeated.output, /No password or role was changed/);
 		const auth = getAuth();
+		assert.equal(auth.options.socialProviders?.google, undefined);
 		const { adapter } = await auth.$context;
 		const signed = await auth.api.signInEmail({
 			body: { email: environment.DASHBOARD_ADMIN_EMAIL, password },

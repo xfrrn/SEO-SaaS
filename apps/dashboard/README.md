@@ -35,7 +35,7 @@ pnpm dashboard:dev
 
 访问 `http://127.0.0.1:3001`，使用初始化时设置的凭据登录。已配置邮件时，未验证邮箱的管理员也需要先完成邮件验证；初始化不会自动将邮箱标记为已验证。`BETTER_AUTH_URL` 与浏览器访问地址应保持一致，不要混用 `localhost` 与 `127.0.0.1`。初始化完成后从 `.env.local` 移除 `DASHBOARD_ADMIN_PASSWORD`；运行应用无需保留初始化凭据。
 
-本地 SQLite 文件路径相对于后台工作目录 `apps/dashboard`。应用使用真实持久化 SQLite，不是内存演示库；`NODE_ENV=production` 明确禁止 SQLite，生产配置 PostgreSQL。本地未配置邮件时关闭公开注册；配置完整后启用邮箱注册和验证。应用不会自动创建管理员、迁移数据库或发放测试积分。
+本地 SQLite 文件路径相对于后台工作目录 `apps/dashboard`。应用使用真实持久化 SQLite，不是内存演示库；`NODE_ENV=production` 明确禁止 SQLite，生产配置 PostgreSQL。本地未配置邮件时关闭邮箱公开注册；配置完整后启用邮箱注册和验证。可选 Google 登录允许创建普通网站用户。应用不会自动创建管理员、迁移数据库或发放测试积分。
 
 ## 注册邮件与密码重置
 
@@ -54,7 +54,41 @@ pnpm dashboard:dev
 
 完整配置会启用邮箱密码注册、注册验证邮件、未验证用户登录时重发验证邮件、密码重置邮件。邮箱验证完成前不能登录，密码重置成功后撤销已有会话。SMTP 使用加密传输；`SMTP_SECURE=false` 也要求服务器支持 STARTTLS。
 
-主站前端通过现有 `authClient.signUp.email()`、`signIn.email()`、`sendVerificationEmail()`、`requestPasswordReset()` 和 `resetPassword()` 接口对接自己的注册、验证和重置页面。后台只提供管理员登录入口，不包含主站注册页面，也未启用 Google、GitHub 等第三方登录。
+主站前端通过现有 `authClient.signUp.email()`、`signIn.email()`、`sendVerificationEmail()`、`requestPasswordReset()` 和 `resetPassword()` 接口对接自己的注册、验证和重置页面。后台提供邮箱密码和可选 Google 登录入口，不包含主站注册页面。Google 配置与邮件独立，启用后生产仍需保留邮件配置，支持原有邮箱验证和密码恢复。
+
+## Google 登录与账号绑定
+
+在 `apps/dashboard/.env.local` 配置下列**服务端**变量：
+
+| 环境变量 | 用途 |
+| --- | --- |
+| `GOOGLE_CLIENT_ID` | Google Auth Platform 创建的 Web application OAuth 客户端 ID |
+| `GOOGLE_CLIENT_SECRET` | 同一 OAuth 客户端密钥，不使用 `NEXT_PUBLIC_` 前缀、不传给浏览器 |
+
+两项都留空时关闭 Google 登录和绑定入口；只配置一项会明确报错。填好后重启后台，登录页将出现“使用 Google 账号登录”。本应用复用原生 Google provider，使用默认 `openid`、`email`、`profile` 权限和账号选择提示，不额外请求 Google API 访问权限。
+
+在 [Google Auth Platform](https://console.cloud.google.com/auth/overview) 配置品牌与受众，创建 Web application 客户端，在 **Authorized redirect URIs** 添加：
+
+```text
+# 自带 Dashboard 本地开发
+http://127.0.0.1:3001/api/auth/callback/google
+# 生产：替换成实际 BETTER_AUTH_URL
+https://你的网站域名/api/auth/callback/google
+```
+
+控制台回调与 `BETTER_AUTH_URL + /api/auth/callback/google` 必须精确一致。`localhost` 与 `127.0.0.1`、端口、协议、路径及末尾斜线都不能混用；生产使用 HTTPS。外部应用测试状态按控制台要求添加测试用户，正式发布/验证遵循 [Google 官方流程](https://developers.google.com/identity/protocols/oauth2/web-server#creatingcred)。
+
+首次为既有管理员启用：
+
+1. 先用原来的邮箱和密码登录。初始化不会把本地邮箱标成已验证，不能假设首次 Google 登录会自动合并管理员。
+2. 点击顶部“绑定 Google 账号”，授权**同邮箱**的 Google 账号。成功后返回当前后台路径，原用户 ID 和管理员角色不变。
+3. 退出后台，再点击“使用 Google 账号登录”，确认能够进入后台。
+
+默认只允许同邮箱绑定，已绑定给其他用户的 Google 账号不能接管。已有本地邮箱已验证且 Google 邮箱也已验证时，认证核心允许默认的同邮箱关联；不降低本地邮箱验证或账号归属校验。首次 Google 登录新建的是普通网站用户，后台 API 仍返回 403，不会自动升级管理员。需要授权时由既有管理员在用户面板明确调整角色；初始化脚本不会将已存在用户提权。
+
+取消 Google 授权会返回当前后台并显示提示。已有账号未关联时显示先登录再绑定的指引，绑定邮箱不一致时提示切换账号；未知错误显示通用失败信息，不把 `error_description` 当作页面内容。初始请求失败会恢复登录按钮，邮箱登录仍可使用。
+
+网站直接接入的完整配置、路由、前端调用及常见错误见 [SDK Google 登录](../../packages/app-sdk/README.md#google-登录)。若将后台迁到 `/admin`，登录和绑定返回当前页面路径，Google 控制台回调仍指向认证路由 `/api/auth/callback/google`。
 
 ## 迁移与管理员初始化
 
@@ -69,6 +103,8 @@ pnpm dashboard:dev
 这个应用使用 SDK 入口及 `admin({ auditLog: true })`、`subscription({ catalog: true })`、`credits()`、`business({ providers, orderTtlMs: 60 * 60_000 })`。`lib/payments.ts` 按环境配置注册 Stripe、PayPal 或 Waffo 适配器，`lib/email.ts` 提供 SMTP 邮件回调。迁入网站时复用网站的 **同一个 auth 实例、数据库、密钥和认证路由**，将 `getAuth()` 改为返回网站现有实例，并补齐上述插件、邮件回调、支付路由及对应迁移；不要重新维护一套互不相通的管理员和用户库。
 
 将后台页面放到网站需要的路径（例如 `/admin`），客户端继续使用同源 `/api/auth`，付款返回页位于 `/payment/return`，支付通知路由位于 `/api/payments/webhook`。若调整这些路径，同步修改支付适配器的回调地址和渠道后台的通知配置。已有同源认证路由时复用它，避免安装第二个冲突的 `/api/auth/[...all]`。应用路由使用 Node.js runtime；权限由服务端检查，前端隐藏按钮不能替代授权。
+
+迁入 Google 登录界面时，将 `public/google-g.png` 一起复制到网站的 `public/google-g.png`，并在网站服务端页面仅传递 Google 是否启用及安全错误提示；不要把 OAuth 凭据传给客户端组件。
 
 浏览器调用 Admin 和 Business 客户端；购买者可以请求核验自己的订单，但不能提交“已付款”状态、付款金额或收款凭据来直接发放权益。套餐、会员和积分人工操作需要原因和稳定操作 ID，同一操作超时后重试复用原 ID 与载荷；商品使用版本校验，会员调整使用 revision 校验。遇到冲突应刷新数据后重新操作。
 
@@ -132,7 +168,7 @@ Waffo 目录金额为**税前商品价**，Pancake 结账另计税额。SDK 精�
 
 Dashboard 已集成 `business({ monitor: createMonitorOptions() })`、`instrumentation.ts` 常驻任务和“监控”页。复制 `.env.example` 中 `APP_MONITOR_*` 配置，先迁移完整 auth schema，再启用并重启服务。固定版本监控包位于工作区 `vendor/monitor-analytics-sdk-0.1.1.tgz`。独立部署时复制此包与 `auth-sdk.tgz`，无需访问原开发仓库。
 
-完整配置和主站注册、OAuth 发起、下单时的 `monitorHeaders(monitor.getAttributionContext())` 用法见 [SDK 监控接入](../../packages/app-sdk/README.md#可信业务监控)。管理后台自身不新增公开注册或 OAuth 页面。用户和订单详情显示各自已保存的归因；缺少线索时明确显示缺失。
+完整配置和主站注册、OAuth 发起、下单时的 `monitorHeaders(monitor.getAttributionContext())` 用法见 [SDK 监控接入](../../packages/app-sdk/README.md#可信业务监控)。管理后台不新增公开注册页面；Google 登录和绑定位于现有登录页及管理员顶部。用户和订单详情显示各自已保存的归因；缺少线索时明确显示缺失。
 
 “监控”页显示服务端站点、环境、接收地址、凭证是否配置、各投递状态计数与最近成功时间；不会接收或显示凭证。可按类型、状态、完整用户/订单 ID 查询，查看原始事件和安全失败原因，填写原因后安排补发。补发复用事件与审计操作 ID，不再次核验收款或发放权益。配置正确但尚无成功回执时显示“暂无成功投递”。关闭状态、空结果和加载失败分别展示。
 
@@ -149,4 +185,4 @@ pnpm dashboard:test
 pnpm dashboard:build
 ```
 
-浏览器仅需安装一次；已有可用 Chromium 时可跳过安装。配置和金额转换单元测试不连接数据库，初始化测试使用独立 SQLite 文件；界面测试使用隔离的本地数据库和随机凭据。支付与邮件测试使用模拟服务响应，不会实际扣款或发送邮件，也不能替代商户自身的沙箱联调。构建前先构建本地 SDK；工作区依赖由根目录 `pnpm-lock.yaml` 管理。
+浏览器仅需安装一次；已有可用 Chromium 时可跳过安装。配置和金额转换单元测试不连接数据库，初始化和 Google 回调测试使用独立 SQLite 文件；界面测试使用隔离的本地数据库和随机凭据。Google 回归覆盖凭据成对校验、授权地址与 PKCE、真实认证回调、既有管理员绑定、新用户普通角色、错误 audience、取消授权、错误提示、键盘和桌面/移动布局；仅 Google 远端响应使用明确的测试替身，不读取开发者 Google 凭据。部署后仍需使用真实 Google 客户端完成登录和绑定联调。支付与邮件测试使用模拟服务响应，不会实际扣款或发送邮件，也不能替代商户自身的沙箱联调。构建前先构建本地 SDK；工作区依赖由根目录 `pnpm-lock.yaml` 管理。

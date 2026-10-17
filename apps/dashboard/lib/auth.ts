@@ -12,12 +12,13 @@ import { betterAuth } from "@app/auth-sdk/server";
 import { subscription } from "@app/auth-sdk/subscription";
 import Database from "better-sqlite3";
 import { Pool } from "pg";
-import { readAuthConfig } from "./auth-config.ts";
+import { readAuthConfig, readGoogleConfig } from "./auth-config.ts";
 import { createEmailHooks, readEmailConfig } from "./email.ts";
 import { createPayments } from "./payments.ts";
 
 function createAuth() {
 	const config = readAuthConfig();
+	const google = readGoogleConfig();
 	const emailConfig = readEmailConfig();
 	const email = emailConfig ? createEmailHooks(emailConfig) : undefined;
 	const payments = getPayments();
@@ -50,6 +51,7 @@ function createAuth() {
 		secret: config.secret,
 		baseURL: config.baseURL,
 		basePath: "/api/auth",
+		socialProviders: { google },
 		emailVerification: email?.emailVerification,
 		emailAndPassword: {
 			enabled: true,

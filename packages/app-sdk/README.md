@@ -43,13 +43,163 @@ SDK 包本身不启动 HTTP 服务，管理页面由仓库中的 `apps/dashboard
 
 PayPal.cn 全球收单的服务端客户端实现在独立的 `@app/paypal` 包中，由 `@app/auth-sdk/paypal` 转发导出 `createPayPalClient`，随完整 SDK 安装包一起分发。配置 `clientId`、`clientSecret`、`webhookId` 后，可以创建订单（`createOrder`）、查询订单（`getOrder`）、确认收款（`captureOrder`）和验证回调（`verifyWebhook`）；正式环境使用 `environment: "live"`。
 
+## Google 登录
+
+Google OAuth 已包含在 SDK 中，不需要新插件或额外安装公共版本 `better-auth`。使用原生 `socialProviders.google`、`signIn.social()` 和 `linkSocial()`；邮箱密码、Admin、Business 等现有配置可以继续放在同一个认证实例中。
+
+### Google 控制台与环境变量
+
+1. 在 [Google Auth Platform](https://console.cloud.google.com/auth/overview) 选择网站项目，按控制台填写品牌、支持邮箱和受众；外部应用在测试状态时按要求添加测试用户，上线前完成适用的发布/验证流程。
+2. 在 Clients 创建类型为 **Web application** 的 OAuth 客户端。将下面的认证回调登记到 **Authorized redirect URIs**；不是网站首页，也不是登录后的页面。
+3. 将客户端 ID 和密钥写入网站服务端环境。密钥不能使用 `NEXT_PUBLIC_` / `VITE_` 前缀，也不能通过组件属性发给浏览器。开发和生产分别登记实际地址；生产使用 HTTPS。
+
+| 场景 | `BETTER_AUTH_URL` | Google Authorized redirect URI |
+| --- | --- | --- |
+| 自带 Dashboard 开发 | `http://127.0.0.1:3001` | `http://127.0.0.1:3001/api/auth/callback/google` |
+| 网站开发示例 | `http://localhost:3000` | `http://localhost:3000/api/auth/callback/google` |
+| 网站生产示例 | `https://www.example.com` | `https://www.example.com/api/auth/callback/google` |
+
+协议、域名、端口、路径和末尾斜线需要精确匹配，`localhost` 与 `127.0.0.1` 是不同配置。若更改 `basePath`，表中的 `/api/auth` 也要一起修改。本流程由后端交换授权码；不使用 One Tap 或 Google 浏览器脚本，不依赖 Authorized JavaScript origins 代替回调地址。参见 [Google 创建凭据与回调规则](https://developers.google.com/identity/protocols/oauth2/web-server#creatingcred)。
+
+```dotenv
+BETTER_AUTH_URL=http://localhost:3000
+BETTER_AUTH_SECRET=<至少 32 字符的独立随机密钥>
+DATABASE_URL=<网站自己的 PostgreSQL 连接串>
+GOOGLE_CLIENT_ID=<Web application 客户端 ID>
+GOOGLE_CLIENT_SECRET=<客户端密钥>
+```
+
+### 服务端与认证路由
+
+新网站的最小配置如下。已有网站只将 `socialProviders.google` 合并进现有 `auth`，复用数据库、密钥与 `/api/auth`，避免再建一个认证实例。以下示例要求两项 Google 凭据完整；自带 Dashboard 则允许两项都留空以关闭 Google。
+
+```ts
+// lib/auth.ts，仅在服务端导入。
+import { betterAuth } from "@app/auth-sdk/server";
+import { Pool } from "pg";
+
+const clientId = process.env.GOOGLE_CLIENT_ID?.trim();
+const clientSecret = process.env.GOOGLE_CLIENT_SECRET?.trim();
+if (!clientId || !clientSecret) {
+  throw new Error("Set both GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.");
+}
+
+export const auth = betterAuth({
+  database: new Pool({ connectionString: process.env.DATABASE_URL }),
+  secret: process.env.BETTER_AUTH_SECRET,
+  baseURL: process.env.BETTER_AUTH_URL,
+  basePath: "/api/auth",
+  socialProviders: {
+    google: { clientId, clientSecret, prompt: "select_account" },
+  },
+  // 在已有网站中保留原有 emailAndPassword、邮件回调及 plugins。
+});
+```
+
+Next.js App Router 挂载认证路由：
+
+```ts
+// app/api/auth/[...all]/route.ts
+import { toNextJsHandler } from "@app/auth-sdk/next-js";
+import { auth } from "@/lib/auth";
+
+export const runtime = "nodejs";
+export const { GET, POST } = toNextJsHandler(auth);
+```
+
+其他框架同样将 `/api/auth/*` 的原生 `Request` 交给 `auth.handler(request)`，完整返回 `Response` 和 `Set-Cookie`。先按完整认证配置迁移数据库，再开放路由；Google 复用现有 user/account/session 表，不额外建立 Google 用户库。网络需能访问 Google 授权、Token 和公钥端点。
+
+### 网站前端
+
+```ts
+// lib/auth-client.ts
+"use client";
+import { createAuthClient } from "@app/auth-sdk/react";
+
+export const authClient = createAuthClient();
+```
+
+网站自己的登录按钮可以直接接入。将 `/account` 和 `/login` 替换为网站实际页面；按钮外观可替换成网站已有组件：
+
+```tsx
+"use client";
+import { useState } from "react";
+import { authClient } from "@/lib/auth-client";
+
+export function GoogleLoginButton() {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  async function signIn() {
+    setBusy(true);
+    setError("");
+    try {
+      const result = await authClient.signIn.social({
+        provider: "google",
+        callbackURL: "/account",
+        errorCallbackURL: "/login",
+      });
+      if (result.error) throw new Error(result.error.message || "Google 登录暂时不可用");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Google 登录暂时不可用");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <>
+      <button type="button" disabled={busy} onClick={() => void signIn()}>
+        {busy ? "正在跳转…" : "使用 Google 账号登录"}
+      </button>
+      {error && <p role="alert">{error}</p>}
+    </>
+  );
+}
+```
+
+SDK 默认跳转 Google，成功后通过认证回调设置当前网站会话 Cookie，再返回 `callbackURL`；它与 Google 控制台登记的 `/api/auth/callback/google` 用途不同。按钮等待期间禁止重复提交；失败时显示明确提示。使用网站现有会话接口 `authClient.useSession()` / `getSession()`；服务端校验仍须传当前请求头 `auth.api.getSession({ headers: request.headers })`。按钮使用 [Google 官方品牌素材](https://developers.google.com/identity/branding-guidelines)，自带 Dashboard 的图标来自该页面。
+
+### 账号绑定与注册策略
+
+首次 Google 登录默认创建普通用户；启用 Admin 插件时角色是 `user`，不会获得后台权限。仅需登录已有用户的网站可在 `socialProviders.google` 设置 `disableSignUp: true`；这只限制 Google 新注册，不改变邮箱注册设置。自带 Dashboard 的 Google 登录允许新建普通网站用户，邮箱注册是否开放仍由 SMTP 配置决定。
+
+同邮箱账号不会无条件合并：默认要求已有本地邮箱已验证、Google 邮箱已验证且允许账号关联。初始化管理员的本地邮箱未验证时会返回 `account_not_linked`。此时先通过原有方式登录，再明确绑定：
+
+```ts
+const result = await authClient.linkSocial({
+  provider: "google",
+  callbackURL: "/account",      // 网站已有的账号页面；Dashboard 使用当前后台路径。
+  errorCallbackURL: "/account",
+});
+if (result.error) throw new Error(result.error.message || "Google 绑定未完成");
+```
+
+绑定要求有效登录会话，默认 Google 邮箱与当前账号邮箱一致；已绑定到其他用户的 Google 账号不能被接管。自带 Dashboard 已在管理员登录后的顶部提供“绑定 Google 账号”。不要为省去这一步关闭本地邮箱验证、开放不同邮箱绑定或根据 Google 邮箱自动提升管理员角色。
+
+### 常见失败与验收
+
+| 现象或 `?error=` | 检查与恢复 |
+| --- | --- |
+| `redirect_uri_mismatch` | 核对实际授权 URL 的 `redirect_uri`、Google 控制台登记和 `BETTER_AUTH_URL`；页面放到 `/admin` 不改变认证回调 |
+| 未显示 Dashboard Google 按钮 | 检查两项服务端凭据是否都已配置，并重启应用 |
+| `access_denied` | 用户取消授权，或 Google 受众/测试用户限制；显示提示后允许重试或邮箱登录 |
+| `account_not_linked` | 先用原有方式登录并绑定，或完成已有本地邮箱的验证 |
+| `email_does_not_match` | 绑定时选择与当前账号邮箱相同的 Google 账号 |
+| `state_mismatch` / `state_not_found` | 从网站重新发起登录；核对访问域名、HTTPS、Cookie 与代理配置，不关闭 state 校验 |
+| Google 登录成功但后台拒绝访问 | 检查该用户是否已有管理员角色；Google 身份不等于管理员权限 |
+
+错误页只显示已知错误对应的提示，对未知错误显示统一失败信息；不要将 `error_description` 当作 HTML 或直接显示提供方返回正文。部署后用真实 Google 测试账号验证首次登录、退出后重登、既有账号绑定、取消授权、普通用户后台拒绝访问，并检查会话 Cookie。仓库回归使用隔离数据库及明确的测试响应验证流程，不能替代真实凭据、控制台和网络联调。
+
 ## Dashboard 接入
 
 仓库中的 [apps/dashboard](../../apps/dashboard/README.md) 是基于指定模板的 Next.js 管理后台，保留原排版、配色、横向 Tabs、图表和弹窗动效，包含概览、用户与会话、套餐、订单、会员、积分和操作记录。它使用 `@app/auth-sdk/react`、`adminClient()` 与 `businessClient()` 调用真实接口；页面源码不随 `auth-sdk.tgz` 分发。
 
 本地从仓库根目录运行 `pnpm build:sdk`，复制 `apps/dashboard/.env.example` 为 `apps/dashboard/.env.local`，填写密钥、数据库、初始管理员及 `BETTER_AUTH_URL=http://127.0.0.1:3001`，然后执行 `pnpm dashboard:setup` 和 `pnpm dashboard:dev`。初始化命令会迁移表并创建新管理员，访问地址为 `http://127.0.0.1:3001`；具体配置和生产数据库要求见应用说明。
 
+需要 Google 登录时填写 `GOOGLE_CLIENT_ID`、`GOOGLE_CLIENT_SECRET`，登记对应认证回调并重启；两项留空时不显示 Google 入口。已有管理员首次接入可先用邮箱密码登录，再点击顶部“绑定 Google 账号”，之后从登录页使用 Google。具体步骤见 [Dashboard Google 登录](../../apps/dashboard/README.md#google-登录与账号绑定)。
+
 迁入已有网站时，复用 `apps/dashboard/components` 中的面板，将 `apps/dashboard/lib/auth.ts` 的 `getAuth()` 接到网站现有认证实例，在 `lib/auth-client.ts` 复用同源认证路由，并为该实例启用 `admin({ auditLog: true })`、`subscription({ catalog: true })`、`credits()` 和 `business({ providers })`。管理员和网站用户共用同一数据库，已有 `/api/auth` 路由无需重复创建。保留网站原有注册策略和服务端权限校验；支付适配器、付款及退款核验仍由网站可信服务端配置。
+
+复用登录界面时还需复制 `apps/dashboard/public/google-g.png` 到网站的 `public/google-g.png`；服务端页面只传 Google 启用标记和安全错误提示，不传凭据。
 
 ## 可信业务监控
 

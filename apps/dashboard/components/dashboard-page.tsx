@@ -1,6 +1,7 @@
 "use client";
 
 import { LogOut, Moon, RefreshCw, Sun } from "lucide-react";
+import Image from "next/image";
 import { useTheme } from "next-themes";
 import type { FormEvent } from "react";
 import { useState } from "react";
@@ -26,13 +27,19 @@ import { UsersPanel } from "@/components/users-panel";
 import { api, errorMessage, useResource } from "@/lib/api";
 import { authClient } from "@/lib/auth-client";
 
-function Login() {
-	const [busy, setBusy] = useState(false);
-	const [error, setError] = useState("");
+function Login({
+	googleEnabled,
+	oauthError,
+}: {
+	googleEnabled: boolean;
+	oauthError: string;
+}) {
+	const [busy, setBusy] = useState<"email" | "google" | null>(null);
+	const [error, setError] = useState(oauthError);
 	async function submit(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault();
 		const form = new FormData(event.currentTarget);
-		setBusy(true);
+		setBusy("email");
 		setError("");
 		try {
 			await api(
@@ -45,7 +52,24 @@ function Login() {
 		} catch (error) {
 			setError(errorMessage(error));
 		} finally {
-			setBusy(false);
+			setBusy(null);
+		}
+	}
+	async function signInGoogle() {
+		setBusy("google");
+		setError("");
+		try {
+			await api(
+				authClient.signIn.social({
+					provider: "google",
+					callbackURL: window.location.pathname,
+					errorCallbackURL: window.location.pathname,
+				}),
+			);
+		} catch (error) {
+			setError(errorMessage(error));
+		} finally {
+			setBusy(null);
 		}
 	}
 	return (
@@ -77,9 +101,27 @@ function Login() {
 							/>
 						</Field>
 						<Notice message={error} />
-						<Button className="w-full" type="submit" disabled={busy}>
-							{busy ? "正在登录…" : "登录"}
+						<Button className="w-full" type="submit" disabled={!!busy}>
+							{busy === "email" ? "正在登录…" : "登录"}
 						</Button>
+						{googleEnabled && (
+							<Button
+								className="w-full"
+								variant="outline"
+								type="button"
+								disabled={!!busy}
+								onClick={() => void signInGoogle()}
+							>
+								<Image
+									src="/google-g.png"
+									alt=""
+									width={20}
+									height={20}
+									className="h-5 w-5"
+								/>
+								{busy === "google" ? "正在跳转…" : "使用 Google 账号登录"}
+							</Button>
+						)}
 					</form>
 				</CardContent>
 			</Card>
@@ -87,15 +129,41 @@ function Login() {
 	);
 }
 
-function Workspace({ email }: { email: string }) {
+function Workspace({
+	email,
+	googleEnabled,
+	oauthError,
+}: {
+	email: string;
+	googleEnabled: boolean;
+	oauthError: string;
+}) {
 	const permission = useResource("permission", () =>
 		api(authClient.business.admin.overview()),
 	);
 	const [tab, setTab] = useState("overview");
 	const [refresh, setRefresh] = useState(0);
-	const [error, setError] = useState("");
+	const [error, setError] = useState(oauthError);
 	const [signingOut, setSigningOut] = useState(false);
+	const [linkingGoogle, setLinkingGoogle] = useState(false);
 	const { resolvedTheme, setTheme } = useTheme();
+	async function linkGoogle() {
+		setLinkingGoogle(true);
+		setError("");
+		try {
+			await api(
+				authClient.linkSocial({
+					provider: "google",
+					callbackURL: window.location.pathname,
+					errorCallbackURL: window.location.pathname,
+				}),
+			);
+		} catch (error) {
+			setError(errorMessage(error));
+		} finally {
+			setLinkingGoogle(false);
+		}
+	}
 	async function signOut() {
 		setSigningOut(true);
 		setError("");
@@ -152,7 +220,7 @@ function Workspace({ email }: { email: string }) {
 							{email}
 						</p>
 					</div>
-					<div className="flex items-center gap-2">
+					<div className="flex flex-wrap items-center gap-2">
 						<Button
 							variant="outline"
 							size="icon"
@@ -171,10 +239,19 @@ function Workspace({ email }: { email: string }) {
 							<RefreshCw className="mr-2 h-4 w-4" />
 							刷新
 						</Button>
+						{googleEnabled && (
+							<Button
+								variant="outline"
+								onClick={() => void linkGoogle()}
+								disabled={linkingGoogle || signingOut}
+							>
+								{linkingGoogle ? "正在跳转…" : "绑定 Google 账号"}
+							</Button>
+						)}
 						<Button
 							variant="outline"
 							onClick={() => void signOut()}
-							disabled={signingOut}
+							disabled={signingOut || linkingGoogle}
 						>
 							<LogOut className="mr-2 h-4 w-4" />
 							退出
@@ -231,7 +308,13 @@ function Workspace({ email }: { email: string }) {
 	);
 }
 
-export default function DashboardPage() {
+export default function DashboardPage({
+	googleEnabled,
+	oauthError,
+}: {
+	googleEnabled: boolean;
+	oauthError: string;
+}) {
 	const session = authClient.useSession();
 	if (session.isPending)
 		return (
@@ -256,8 +339,13 @@ export default function DashboardPage() {
 			</main>
 		);
 	return session.data ? (
-		<Workspace key={session.data.session.id} email={session.data.user.email} />
+		<Workspace
+			key={session.data.session.id}
+			email={session.data.user.email}
+			googleEnabled={googleEnabled}
+			oauthError={oauthError}
+		/>
 	) : (
-		<Login />
+		<Login googleEnabled={googleEnabled} oauthError={oauthError} />
 	);
 }
