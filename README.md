@@ -141,6 +141,12 @@ SDK 提供独立的 `tickets()` 与 `ticketsClient()`，复用网站已有认证
 
 工单需要真实 SQL 事务和 `admin({ auditLog: true })`。匿名访问返回 401，越权访问他人工单返回 404，普通用户不能访问管理接口。创建、回复和状态写入均使用稳定 UUID 重试键；并发更新冲突返回 409，刷新后重试。已关闭工单需管理员重新打开后回复。本版提供文字工单，不含附件、邮件通知或第三方客服接入。
 
+## 用户付款统计
+
+Business 插件现已提供按币种的收款总额、已记录退款、收款净额、客单价、UTC 日/月趋势、新注册付费转化率，以及用户累计消费。Dashboard 新增“付款统计”页签，用户详情显示累计消费；网站用户可读取自己的消费汇总，管理统计由服务端权限保护。
+
+统计使用已核验的本地业务订单，不把待付款、会员状态或外部渠道历史当作收款。趋势按付款时间归属，后续退款回冲原付款期；金额保持各币种最小单位，不换汇或混加。单次期间最多 366 天。完整字段、查询示例、退款/转化率口径和查询规模限制见 [付款统计接入](./packages/app-sdk/README.md#用户付款统计)。升级先使用完整认证配置执行迁移，补齐 `businessOrder.paidAt` 索引。
+
 ## Google 登录
 
 SDK 已内置 Google OAuth，无需额外认证插件。网站在现有 `betterAuth()` 实例中配置 `socialProviders.google`，浏览器调用 `authClient.signIn.social({ provider: "google", callbackURL, errorCallbackURL })`；完整的服务端、Next.js 路由、React 按钮、账号绑定及排错示例见 [Google 登录接入](./packages/app-sdk/README.md#google-登录)。

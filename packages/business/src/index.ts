@@ -18,6 +18,8 @@ import {
 import type { AdminOptions } from "better-auth/plugins/admin";
 import { createAdminAuditService } from "better-auth/plugins/admin";
 import * as z from "zod";
+import { createBusinessAnalyticsService } from "./analytics/service";
+import { paymentStatsQuery } from "./analytics/validation";
 import { createMonitorService, monitorContext, monitorQuery } from "./monitor";
 import { businessSchema } from "./schema";
 import { assertBusinessDatabase, createBusinessService } from "./service";
@@ -31,6 +33,7 @@ import {
 	paymentConfirmation,
 } from "./validation";
 
+export type * from "./analytics/types";
 export type {
 	MonitorDelivery,
 	MonitorEvent,
@@ -76,6 +79,7 @@ export function business(options: BusinessOptions = {}) {
 	});
 	const authorize = (permission: BusinessPermission) =>
 		createAuthMiddleware(async (ctx) => {
+			ctx.setHeader("Cache-Control", "no-store");
 			const session = await getAuthoritativeSessionFromCtx(ctx);
 			if (!session)
 				throw new APIError("UNAUTHORIZED", { message: "Sign in required" });
@@ -211,6 +215,43 @@ export function business(options: BusinessOptions = {}) {
 			};
 		},
 		endpoints: {
+			getBusinessPaymentStatistics: createAuthEndpoint(
+				"/business/admin/payment-stats",
+				{ ...read("metrics:read"), query: paymentStatsQuery },
+				async (ctx) =>
+					createBusinessAnalyticsService(ctx.context.adapter).payments(
+						ctx.query,
+					),
+			),
+			getBusinessCustomerSpending: createAuthEndpoint(
+				"/business/admin/spending",
+				{
+					...read("customers:read"),
+					query: z.strictObject({ referenceId: identifier }),
+				},
+				async (ctx) => {
+					await requireUser(ctx, ctx.query.referenceId);
+					return createBusinessAnalyticsService(ctx.context.adapter).spending(
+						ctx.query.referenceId,
+					);
+				},
+			),
+			getOwnBusinessSpending: createAuthEndpoint(
+				"/business/spending",
+				{
+					method: "GET",
+					requireHeaders: true,
+					use: [sessionMiddleware],
+					query: z.strictObject({}).optional(),
+					metadata: { noStore: true },
+				},
+				async (ctx) => {
+					ctx.setHeader("Cache-Control", "no-store");
+					return createBusinessAnalyticsService(ctx.context.adapter).spending(
+						ctx.context.session.user.id,
+					);
+				},
+			),
 			/** One bounded background round; this endpoint is never exposed over HTTP. */
 			runMonitorDelivery: createAuthEndpoint.serverOnly(
 				{ method: "POST" },

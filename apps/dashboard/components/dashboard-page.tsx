@@ -12,6 +12,7 @@ import { MembershipsPanel } from "@/components/memberships-panel";
 import { MonitorPanel } from "@/components/monitor-panel";
 import { OrdersPanel } from "@/components/orders-panel";
 import { Overview } from "@/components/overview";
+import { PaymentStatisticsPanel } from "@/components/payment-statistics";
 import { ProductsPanel } from "@/components/products-panel";
 import { Field, Notice, RequestState } from "@/components/shared";
 import { TicketsPanel } from "@/components/tickets-panel";
@@ -288,6 +289,7 @@ function Workspace({
 								["users", "用户"],
 								["products", "套餐"],
 								["orders", "订单"],
+								["payments", "付款统计"],
 								["memberships", "会员"],
 								["credits", "积分"],
 								["audit", "审计"],
@@ -311,6 +313,9 @@ function Workspace({
 					</TabsContent>
 					<TabsContent value="orders">
 						<OrdersPanel key={refresh} />
+					</TabsContent>
+					<TabsContent value="payments">
+						<PaymentStatisticsPanel key={refresh} />
 					</TabsContent>
 					<TabsContent value="memberships">
 						<MembershipsPanel key={refresh} />

@@ -48,7 +48,7 @@ export const businessSchema = {
 			providerKey: { type: "string", required: false, unique: true },
 			checkoutURL: { type: "string", required: false },
 			paymentId: { type: "string", required: false },
-			paidAt: { type: "date", required: false },
+			paidAt: { type: "date", required: false, index: true },
 			periodStart: { type: "date", required: false },
 			periodEnd: { type: "date", required: false },
 			refundedAmount: {

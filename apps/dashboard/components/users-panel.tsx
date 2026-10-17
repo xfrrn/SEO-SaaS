@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { CustomerSpending } from "@/components/customer-spending";
 import { MonitorAttribution } from "@/components/monitor-panel";
 import { Field, Notice, Pagination, RequestState } from "@/components/shared";
 import { Badge } from "@/components/ui/badge";
@@ -339,6 +340,7 @@ function UserDetails({
 							kind={copy.error ? "error" : "success"}
 						/>
 						<MonitorAttribution userId={userId} />
+						<CustomerSpending userId={userId} />
 						{data.user.banned && (
 							<div className="rounded-md border p-3 text-sm">
 								<p className="font-medium">封禁原因</p>

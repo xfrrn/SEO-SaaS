@@ -317,7 +317,7 @@ if (changed.error) throw new Error(changed.error.message || "状态保存失败"
 
 ## Dashboard 接入
 
-仓库中的 [apps/dashboard](../../apps/dashboard/README.md) 是基于指定模板的 Next.js 管理后台，保留原排版、配色、横向 Tabs、图表和弹窗动效，包含概览、用户与会话、套餐、订单、会员、积分、操作记录、监控和工单。它使用 `@app/auth-sdk/react`、`adminClient()`、`businessClient()` 与 `ticketsClient()` 调用真实接口；页面源码不随 `auth-sdk.tgz` 分发。
+仓库中的 [apps/dashboard](../../apps/dashboard/README.md) 是基于指定模板的 Next.js 管理后台，保留原排版、配色、横向 Tabs、图表和弹窗动效，包含概览、用户与会话、套餐、订单、付款统计、会员、积分、操作记录、监控和工单。它使用 `@app/auth-sdk/react`、`adminClient()`、`businessClient()` 与 `ticketsClient()` 调用真实接口；页面源码不随 `auth-sdk.tgz` 分发。
 
 本地从仓库根目录运行 `pnpm build:sdk`，复制 `apps/dashboard/.env.example` 为 `apps/dashboard/.env.local`，填写密钥、数据库、初始管理员及 `BETTER_AUTH_URL=http://127.0.0.1:3001`，然后执行 `pnpm dashboard:setup` 和 `pnpm dashboard:dev`。初始化命令会迁移表并创建新管理员，访问地址为 `http://127.0.0.1:3001`；具体配置和生产数据库要求见应用说明。
 
@@ -403,6 +403,81 @@ await authClient.business.orders.create({
 发送函数限制 5 秒，只接受有效 `{accepted, duplicates}` 回执。网络、429、5xx 指数退避（遵守 Retry-After），最多自动尝试 8 次。协议、配置或权限错误进入 `failed`；手动补发保留累计尝试次数，已达 8 次的事件只执行本次人工安排。超过首次尝试后的窗口停止投递。策略变化导致旧快照不再合法时标记失败，不能静默删改旧快照。记录和日志只保存安全错误码及 HTTP 状态，不保存响应正文、凭证或网络错误原文。
 
 升级先迁移完整 auth schema：`user` 新增 `monitorSignup`（JSON）、`monitorSiteId`、`monitorSignupPending`（默认 false）；`businessOrder` 新增 `monitorContext`（JSON）；新增 `businessMonitorEvent`、UUID/业务键唯一约束和租约查询索引。即使关闭监控，这些 schema 也保留。使用既有迁移流程或 `getMigrations(auth.options).runMigrations()`；不要在请求中自动迁移。JSON 快照内的 ISO 时间保留字符串，普通用户和订单响应不返回内部字段。生产需要支持真实事务和唯一索引的 SQL 适配器。
+
+## 用户付款统计
+
+付款统计已集成在现有 `business()` / `businessClient()` 中，沿用网站同一个认证实例、数据库和 `/api/auth` 路由，无需额外插件、密钥或统计服务。原有 `getBusinessOverview` 和 `createMetricsHandler` 合同保持不变；下面的新接口提供详细收入与消费数据，站点统计 handler 仍由网站提供 `countPaidUsers`。
+
+### 网站查询示例
+
+在已有客户端保留 `businessClient()`；其服务端仍须启用 `admin({ auditLog: true })`、`subscription({ catalog: true })`、`credits()` 和 `business({ providers })`。独立接入初始化方法见 [组合业务启用与迁移](#启用与迁移)。`BusinessPaymentStatistics`、`BusinessCustomerSpending` 与 `PaymentTotals` 类型由 `@app/auth-sdk/business` 导出。
+
+```ts
+// 管理后台：UTC 起始时刻包含，结束时刻不包含，单次最多 366 天。
+const report = await authClient.business.admin.paymentStats({
+  query: {
+    from: "2026-10-01T00:00:00Z",
+    to: "2026-11-01T00:00:00Z",
+    interval: "day", // "month" 按 UTC 自然月分桶；默认 "day"。
+  },
+});
+if (report.error) throw new Error(report.error.message || "无法读取付款统计");
+for (const currency of report.data.currencies) {
+  // 按币种分别呈现；禁止把 USD、JPY 等金额相加。
+  console.log(currency.currency, currency.grossAmount, currency.netAmount);
+  console.log(currency.averageOrderAmount, currency.trend);
+}
+console.log(report.data.conversion); // 注册人数、转化人数和 0～1 的比率。
+
+// 普通网站用户：服务端从当前会话确定用户，不接受 referenceId。
+const own = await authClient.business.spending();
+if (own.error) throw new Error(own.error.message || "无法读取累计消费");
+console.log(own.data.paidOrders, own.data.currencies);
+
+// 管理员：读取指定用户的终身累计消费，与期间筛选无关。
+const customer = await authClient.business.admin.spending({
+  query: { referenceId: userId },
+});
+if (customer.error) throw new Error(customer.error.message || "无法读取用户消费");
+```
+
+| 服务端方法 | 浏览器调用 / HTTP 路径（认证 base path 下） | 权限 |
+| --- | --- | --- |
+| `auth.api.getBusinessPaymentStatistics({ headers, query })` | `business.admin.paymentStats()` / GET `/business/admin/payment-stats` | `metrics:read` |
+| `auth.api.getBusinessCustomerSpending({ headers, query: { referenceId } })` | `business.admin.spending()` / GET `/business/admin/spending` | `customers:read` |
+| `auth.api.getOwnBusinessSpending({ headers })` | `business.spending()` / GET `/business/spending` | 当前登录用户自身 |
+
+服务端调用传入当前请求的真实 `headers`。管理接口每次重新读取会话，沿用 Admin 角色/白名单或 `business({ authorize })` 的细分权限，拒绝普通用户、已封禁账号和模拟管理员会话。自身查询不接受其他用户 ID；未登录返回 401，越权管理返回 403，不存在的目标用户返回 404。响应不允许 HTTP 缓存，不在浏览器保存管理凭据。
+
+### 指标与退款口径
+
+仅统计状态为 `paid`、`fulfilled`、`partially_refunded` 或 `refunded`，同时具有非空付款 ID、有效付款时间和正金额的本地订单。未来付款不计入；履约失败但收款已核验的订单仍计入，反复核验同一付款不会增加订单数。外部历史订单不会自动导入。
+
+| 字段 | 定义 |
+| --- | --- |
+| `paidOrders` / `paidUsers` | 所选付款区间内的订单数 / 按用户 ID 去重的人数；跨币种总人数也去重，不能简单累加各币种人数 |
+| `currencies[].grossAmount` | 该币种所选付款订单的原始已核验收款金额合计 |
+| `refundedAmount` | 这些订单**当前已核验并保存**的退款金额合计，包括后来发生的退款 |
+| `netAmount` | 收款总额减上述退款；未扣支付手续费、业务成本或另计税费，不是利润 |
+| `averageOrderAmount` | 收款总额 / 付款订单数，四舍五入到最小货币单位；无付款时为 `null` |
+| `trend[]` | 每个 UTC 日/月的同组指标，按 `periodStart` 升序，无付款桶补零；仅统计请求区间内的付款，首尾桶可能不足完整日/月 |
+| `conversion.registeredUsers` | 在 `[from, to)` 注册且查询时仍存在的账户数，含所有角色 |
+| `conversion.convertedUsers` | 上述注册用户中，在同一区间内至少成功付款一次的去重人数，跨币种去重，之后退款仍算完成过付款 |
+| `conversion.rate` | 转化人数 / 注册人数，0～1；没有注册用户时为 `null`，不是访问者转化率或所有历史用户付费率 |
+
+金额使用各币种 ISO 最小单位及安全整数，不能统一除以 100：例如 JPY 没有小数位。网站可复用 Dashboard `lib/format.ts` 的 `money` 及币种小数位规则；图表的近似轴标签不能代替表格精确金额。默认客户端会将日期字段解析为 `Date`；HTTP 原始 JSON 中为 ISO 字符串。
+
+这是一份**按付款批次重述的报表**：例如一月付款、二月退款，刷新一月报表时退款会扣回一月净额，不生成二月退款现金流。当前 Stripe、PayPal、Waffo 业务适配器尚未提供自动退款同步；只有通过已接入的可信 `verifyRefund` 与 `confirmBusinessRefund` 核对并保存的退款才会扣减，不能把未同步的渠道退款当作 0 元退款的证明。Waffo 收款为已核验的税前商品金额，不含代收税额。
+
+用户累计消费返回 `{ referenceId, generatedAt, paidOrders, firstPaidAt, lastPaidAt, currencies }`，按其全部已核验订单汇总，币种分开。没有付款时日期为 `null`、订单数为 0、币种列表为空。已删除用户的历史订单仍可参与收入/付费人数统计，但不参与当前注册账户转化率，管理端也不能按不存在的账户查询详情。
+
+### Dashboard、升级与限制
+
+“付款统计”默认查询 UTC 本月至今天，可选择开始/结束日期、日/月粒度和展示币种。结束日期含当天，客户端转换为次日 UTC 零点的排他上界。收入汇总显示全部币种，图表每次展示一种币种，并提供可分页的数据表。无付款、无注册用户、非法日期及服务失败分别展示，不用 0 掩盖错误。用户页的“账户详情 → 累计消费”独立刷新，不受统计期间影响。
+
+升级前备份数据库，使用 [完整认证迁移配置](#服务端与数据库迁移) 执行 `getMigrations(auth.options)` / `runMigrations()`，增加 `businessOrder.paidAt` 索引；无需新增统计表或回填虚构收款，也不要重跑管理员初始化脚本。已有本地核验订单可直接统计。
+
+查询从真实数据库按 ID 分页，每页 500 笔、只读取汇总所需列；单次最多 100000 笔符合条件的付款，超过返回 503 而非截断结果。期间报表可缩短日期范围；单用户终身消费超过此规模时需要宿主接入数据库原生聚合。金额合计超出安全整数、退款大于收款或数据库异常会明确失败，不返回近似成功结果。报表反映查询时已入库状态，查询过程中发生的新收款/退款可能需要刷新后反映，不提供会计结算快照或汇率换算。
 
 ## SEO-worker 站点统计
 
