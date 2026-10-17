@@ -10,6 +10,7 @@ import { nextCookies } from "@app/auth-sdk/next-js";
 import { admin } from "@app/auth-sdk/plugins";
 import { betterAuth } from "@app/auth-sdk/server";
 import { subscription } from "@app/auth-sdk/subscription";
+import { tickets } from "@app/auth-sdk/tickets";
 import Database from "better-sqlite3";
 import { Pool } from "pg";
 import { readAuthConfig, readGoogleConfig } from "./auth-config.ts";
@@ -63,6 +64,7 @@ function createAuth() {
 		},
 		plugins: [
 			admin({ auditLog: true }),
+			tickets(),
 			subscription({ catalog: true }),
 			credits(),
 			business({

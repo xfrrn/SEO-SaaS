@@ -7,6 +7,7 @@ This is the Better Auth repository - a comprehensive authentication framework fo
 - `packages/better-auth` - Main authentication library
 - `packages/core` - Shared core types and utilities
 - `packages/app-sdk` - Application SDK entry points, re-exporting authentication, subscription, credits, and payment packages
+- `packages/app-sdk/src/tickets.ts` and `src/tickets/` - Independent feedback ticket plugin, schema, customer ownership, administrator processing and immutable conversation history
 - `packages/subscription` - Provider-neutral subscription plugin (`@app/subscription`), shared schema, types, and tests
 - `packages/credits` - Provider-neutral credits balance and append-only ledger plugin (`@app/credits`) and tests
 - `packages/paypal` - Standalone PayPal client (`@app/paypal`) and tests

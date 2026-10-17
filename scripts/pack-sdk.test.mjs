@@ -10,8 +10,32 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { stageSDK } from "./pack-sdk.mjs";
+
+test("packaged SDK includes ticket, client and migration entrypoints with declarations", async () => {
+	const temporaryRoot = resolve(tmpdir());
+	const stage = await mkdtemp(join(temporaryRoot, "auth-sdk-entries-"));
+	try {
+		const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+		const manifest = await stageSDK(root, stage);
+		for (const name of ["tickets", "tickets/client", "migrations"]) {
+			const entry = manifest.exports[`./${name}`];
+			assert.equal(entry["dev-source"], undefined);
+			assert.ok(
+				(await readFile(join(stage, entry.default), "utf8")).length > 0,
+			);
+			assert.ok((await readFile(join(stage, entry.types), "utf8")).length > 0);
+		}
+		assert.match(
+			await readFile(join(stage, "README.md"), "utf8"),
+			/用户反馈工单/,
+		);
+	} finally {
+		assert.equal(dirname(resolve(stage)), temporaryRoot);
+		await rm(stage, { recursive: true, force: true });
+	}
+});
 
 test("SDK contains custom native packages and preserves optional framework and payment peers", async () => {
 	const temporaryRoot = resolve(tmpdir());

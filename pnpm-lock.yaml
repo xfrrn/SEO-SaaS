@@ -270,6 +270,9 @@ importers:
       '@app/waffo':
         specifier: workspace:^
         version: link:../waffo
+      zod:
+        specifier: 'catalog:'
+        version: 4.5.4
     devDependencies:
       monitor-analytics-sdk:
         specifier: file:../../vendor/monitor-analytics-sdk-0.1.1.tgz
@@ -1076,6 +1079,8 @@ importers:
 packages:
 
   '@waffo/pancake-ts@0.26.0':
+    resolution: {integrity: sha512-3exK093SGBYmbhEF40jRF+BiCQZRLLThxsADZ3s3vJs/JPDqRSICAmUiIUhu0/gtDe1hB0VzrduLSYRS9YAMhg==}
+    engines: {node: '>=20.0.0'}
 
   nodemailer@10.0.15:
     resolution:

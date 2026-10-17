@@ -3,6 +3,7 @@ import * as sdkBusinessClient from "@app/auth-sdk/business/client";
 import * as sdkClientPlugins from "@app/auth-sdk/client/plugins";
 import * as sdkCredits from "@app/auth-sdk/credits";
 import * as sdkCreditsClient from "@app/auth-sdk/credits/client";
+import * as sdkMigrations from "@app/auth-sdk/migrations";
 import * as sdkNextJS from "@app/auth-sdk/next-js";
 import * as sdkPayPal from "@app/auth-sdk/paypal";
 import * as sdkPlugins from "@app/auth-sdk/plugins";
@@ -25,6 +26,7 @@ import * as nativeStripe from "@better-auth/stripe";
 import * as nativeStripeClient from "@better-auth/stripe/client";
 import * as nativeServer from "better-auth";
 import * as nativeClientPlugins from "better-auth/client/plugins";
+import * as nativeMigrations from "better-auth/db/migration";
 import * as nativeNextJS from "better-auth/next-js";
 import * as nativePlugins from "better-auth/plugins";
 import * as nativeReact from "better-auth/react";
@@ -39,6 +41,7 @@ describe("SDK native compatibility", () => {
 			[sdkServer, nativeServer],
 			[sdkReact, nativeReact],
 			[sdkNextJS, nativeNextJS],
+			[sdkMigrations, nativeMigrations],
 			[sdkPlugins, nativePlugins],
 			[sdkClientPlugins, nativeClientPlugins],
 			[sdkCredits, nativeCredits],

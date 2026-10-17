@@ -2,6 +2,7 @@
 
 import { LogOut, Moon, RefreshCw, Sun } from "lucide-react";
 import Image from "next/image";
+import Link from "next/link";
 import { useTheme } from "next-themes";
 import type { FormEvent } from "react";
 import { useState } from "react";
@@ -13,6 +14,7 @@ import { OrdersPanel } from "@/components/orders-panel";
 import { Overview } from "@/components/overview";
 import { ProductsPanel } from "@/components/products-panel";
 import { Field, Notice, RequestState } from "@/components/shared";
+import { TicketsPanel } from "@/components/tickets-panel";
 import { Button } from "@/components/ui/button";
 import {
 	Card,
@@ -27,12 +29,14 @@ import { UsersPanel } from "@/components/users-panel";
 import { api, errorMessage, useResource } from "@/lib/api";
 import { authClient } from "@/lib/auth-client";
 
-function Login({
+export function Login({
 	googleEnabled,
 	oauthError,
+	customer = false,
 }: {
 	googleEnabled: boolean;
 	oauthError: string;
+	customer?: boolean;
 }) {
 	const [busy, setBusy] = useState<"email" | "google" | null>(null);
 	const [error, setError] = useState(oauthError);
@@ -76,8 +80,14 @@ function Login({
 		<main className="flex min-h-screen items-center justify-center p-4">
 			<Card className="w-full max-w-md">
 				<CardHeader>
-					<CardTitle className="text-2xl">登录管理后台</CardTitle>
-					<CardDescription>使用网站管理员账号继续。</CardDescription>
+					<CardTitle className="text-2xl">
+						{customer ? "登录反馈中心" : "登录管理后台"}
+					</CardTitle>
+					<CardDescription>
+						{customer
+							? "登录后提交和跟进你的反馈。"
+							: "使用网站管理员账号继续。"}
+					</CardDescription>
 				</CardHeader>
 				<CardContent>
 					<form className="space-y-5" onSubmit={submit}>
@@ -123,6 +133,14 @@ function Login({
 							</Button>
 						)}
 					</form>
+					{!customer && (
+						<Link
+							href="/support"
+							className="mt-5 block text-center text-sm underline underline-offset-4"
+						>
+							提交与查看反馈
+						</Link>
+					)}
 				</CardContent>
 			</Card>
 		</main>
@@ -195,6 +213,9 @@ function Workspace({
 							disabled={signingOut}
 						>
 							退出并切换账号
+						</Button>
+						<Button asChild variant="link">
+							<Link href="/support">提交与查看反馈</Link>
 						</Button>
 						<Notice message={error} />
 					</CardContent>
@@ -271,6 +292,7 @@ function Workspace({
 								["credits", "积分"],
 								["audit", "审计"],
 								["monitor", "监控"],
+								["tickets", "工单"],
 							].map(([value, label]) => (
 								<TabsTrigger key={value} value={value!}>
 									{label}
@@ -301,6 +323,9 @@ function Workspace({
 					</TabsContent>
 					<TabsContent value="monitor">
 						<MonitorPanel key={refresh} />
+					</TabsContent>
+					<TabsContent value="tickets">
+						<TicketsPanel key={refresh} admin />
 					</TabsContent>
 				</Tabs>
 			</main>

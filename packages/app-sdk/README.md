@@ -19,6 +19,9 @@ pnpm add ./vendor/auth-sdk.tgz
 | 入口 | 内容 |
 | --- | --- |
 | `@app/auth-sdk/server` | `betterAuth` 和服务端类型 |
+| `@app/auth-sdk/migrations` | `getMigrations` 原生迁移器，支持独立安装包 |
+| `@app/auth-sdk/tickets` | `tickets` 工单插件、`SupportTicket` / `TicketEntry` / `TicketStatus` 类型 |
+| `@app/auth-sdk/tickets/client` | `ticketsClient` 用户工单与管理员处理接口 |
 | `@app/auth-sdk/metrics` | `createMetricsHandler` 站点只读统计接口 |
 | `@app/auth-sdk/plugins` | 内置服务端插件 |
 | `@app/auth-sdk/client/plugins` | 内置客户端插件 |
@@ -189,15 +192,138 @@ if (result.error) throw new Error(result.error.message || "Google 绑定未完�
 
 错误页只显示已知错误对应的提示，对未知错误显示统一失败信息；不要将 `error_description` 当作 HTML 或直接显示提供方返回正文。部署后用真实 Google 测试账号验证首次登录、退出后重登、既有账号绑定、取消授权、普通用户后台拒绝访问，并检查会话 Cookie。仓库回归使用隔离数据库及明确的测试响应验证流程，不能替代真实凭据、控制台和网络联调。
 
+## 用户反馈工单
+
+工单是独立可选插件，不要求订阅、积分或支付功能。它使用现有登录会话和同一个网站数据库；需要 `admin({ auditLog: true })`，SQL 适配器必须支持真实事务与唯一索引。内存适配器及只顺序执行的事务替代会在初始化时明确报错。
+
+### 服务端与数据库迁移
+
+在已有 `lib/auth.ts` 的同一个实例中添加插件，保留原有数据库、登录方式、密钥及业务配置：
+
+```ts
+import { betterAuth } from "@app/auth-sdk/server";
+import { admin } from "@app/auth-sdk/plugins";
+import { tickets } from "@app/auth-sdk/tickets";
+
+// 合并到已有 betterAuth 配置；database、secret、baseURL 继续使用网站现有值。
+export const auth = betterAuth({
+  database,
+  secret,
+  baseURL,
+  plugins: [admin({ auditLog: true }), tickets()],
+});
+```
+
+不要重复注册 Admin 插件：若已启用，确认原配置包含 `auditLog: true`，仅追加 `tickets()`。沿用 `/api/auth/[...all]` 和 `toNextJsHandler(auth)` 或现有 `auth.handler(request)`；不需要另起工单 HTTP 服务或新增环境变量。
+
+升级时先备份目标数据库，使用完整认证配置审查并执行迁移。例如在网站**显式部署迁移命令**中调用：
+
+```ts
+import { getMigrations } from "@app/auth-sdk/migrations";
+import { auth } from "./lib/auth";
+
+const { runMigrations } = await getMigrations(auth.options);
+await runMigrations();
+```
+
+新增 `supportTicket`（所有者、标题、初始内容、状态、revision、创建/更新时间）和 `supportTicketEntry`（回复/状态变化、作者、角色、序号及时间），以及 `(userId, idempotencyKey)`、`(authorId, idempotencyKey)`、`(ticketId, sequence)` 唯一索引。后台沿用 Admin 审计表；已有管理员初始化脚本不能当作升级迁移命令重复运行。请求中不会自动迁移。删除用户保留工单历史及原用户 ID；本版不提供工单或消息删除接口。
+
+### 网站客户端
+
+```ts
+import { createAuthClient } from "@app/auth-sdk/react";
+import { ticketsClient } from "@app/auth-sdk/tickets/client";
+
+export const authClient = createAuthClient({
+  plugins: [ticketsClient()], // 合并进网站已有的 client plugins。
+});
+```
+
+登录后的用户可以直接调用：
+
+```ts
+// 一次明确的新提交生成一个 UUID；网络失败时保留该编号和原载荷重试。
+const createKey = crypto.randomUUID();
+const created = await authClient.tickets.create({
+  title: "无法查看付款记录",
+  content: "请协助检查我的账户付款记录。",
+  idempotencyKey: createKey,
+});
+if (created.error) throw new Error(created.error.message || "提交失败");
+const ticketId = created.data.ticket.id;
+
+const list = await authClient.tickets.list({ query: { limit: 20, offset: 0 } });
+const detail = await authClient.tickets.get({ query: { ticketId, limit: 20, offset: 0 } });
+const replyKey = crypto.randomUUID();
+const replied = await authClient.tickets.reply({
+  ticketId,
+  content: "补充：刷新页面后仍然出现。",
+  idempotencyKey: replyKey,
+});
+if (replied.error) throw new Error(replied.error.message || "回复失败");
+```
+
+`list` 返回 `{ tickets, total }`；`get` 返回 `{ ticket, entries, total }`，其中 `total` 是追加回复和状态记录的总数，不包含 `ticket.content` 中的首次提交。`entries` 按 `sequence` 升序排列，`kind` 为 `reply` 或 `status`；作者角色由服务端产生。所有列表都支持 `limit`（默认 20、上限 100）和 `offset`（默认 0），工单列表额外支持 `status` 筛选。
+
+标题去除首尾空白后为 1～200 字符，初始内容和回复为 1～10000 字符；空白、NUL、伪造所有者/角色/状态等额外写入字段会被拒绝。用户 ID 来自服务端会话，浏览器不得传入其他用户 ID。内容为**纯文本**，渲染时使用 React 文本节点并保留换行，不使用 `dangerouslySetInnerHTML`。SDK 保留正文中的日期文本，`createdAt` / `updatedAt` 正常解析为 Date；自定义 JSON parser 的行为由宿主负责。
+
+### 管理员处理
+
+管理端复用同一个客户端；权限在每次请求时重新读取，不依赖浏览器角色或旧的 Cookie 缓存：
+
+```ts
+const all = await authClient.tickets.admin.list({ query: { status: "open", limit: 20, offset: 0 } });
+const detail = await authClient.tickets.admin.get({ query: { ticketId, limit: 20, offset: 0 } });
+if (detail.error) throw new Error(detail.error.message || "无法读取工单");
+
+const replyKey = crypto.randomUUID();
+const reply = await authClient.tickets.admin.reply({
+  ticketId, content: "已收到反馈，我们正在核对。", idempotencyKey: replyKey,
+});
+if (reply.error) throw new Error(reply.error.message || "回复失败");
+
+// 回复也会增加 revision，改状态前读取最新详情。
+const latest = await authClient.tickets.admin.get({ query: { ticketId } });
+if (latest.error) throw new Error(latest.error.message || "刷新失败");
+const statusKey = crypto.randomUUID();
+const changed = await authClient.tickets.admin.status({
+  ticketId, status: "in_progress",
+  expectedRevision: latest.data.ticket.revision,
+  idempotencyKey: statusKey,
+});
+if (changed.error) throw new Error(changed.error.message || "状态保存失败");
+```
+
+状态为 `open`（待处理）、`in_progress`（处理中）和 `closed`（已关闭）。管理员可在三种状态之间切换，包括重新打开已关闭工单；关闭后任何角色都不能新增回复。状态变化和管理员回复的工单记录、revision 及审计在同一事务中提交，任一步失败均回滚。审计只保存工单 ID、动作和序号/状态，不复制反馈正文。
+
+| 客户端调用 | HTTP 路径，位于现有认证 basePath 下 |
+| --- | --- |
+| `tickets.create()` | `POST /tickets/create` |
+| `tickets.list()` / `tickets.get()` | `GET /tickets/list` / `GET /tickets/get` |
+| `tickets.reply()` | `POST /tickets/reply` |
+| `tickets.admin.list()` / `tickets.admin.get()` | `GET /tickets/admin/list` / `GET /tickets/admin/get` |
+| `tickets.admin.reply()` | `POST /tickets/admin/reply` |
+| `tickets.admin.status()` | `POST /tickets/admin/status` |
+
+服务端也可使用同名 `auth.api.createSupportTicket`、`listSupportTickets`、`getSupportTicket`、`replySupportTicket`、`listAdminSupportTickets`、`getAdminSupportTicket`、`replyAdminSupportTicket` 和 `updateSupportTicketStatus`，传当前请求的 `headers` 和对应 `body` / `query`；保留当前 Origin，写请求仍执行正常 CSRF 检查。
+
+### 权限、重试与网站界面
+
+匿名请求返回 401；用户读取或回复他人工单返回 404；普通用户管理接口返回 403。管理员沿用 Admin 插件的 `adminRoles`（默认 `admin`）与 `adminUserIds`，禁用账号和模拟登录会话不能访问工单接口。所有工单响应设置 `Cache-Control: no-store`。
+
+每次明确新建、追加回复或修改状态，生成独立的 UUID `idempotencyKey`。未确认写入时必须复用原键及原载荷；重复成功请求返回原记录，不重复回复、改状态或记审计。相同键更换载荷、状态 revision 已过期或并发更新返回 409；先刷新并核对工单，再决定是否生成新的操作键。数据库异常直接报错，不生成成功占位记录。
+
+网站可使用自己的反馈页面调用上述接口，或复制 Dashboard 的 `tickets-panel.tsx`、`ticket-thread.tsx` 及现有共享 UI，接上网站同一 `authClient`。Dashboard 的 `/support` 是用户可用页面，后台“工单”页签使用管理接口；管理员在用户页面同样只看到自己的工单。界面包含新建、分页/状态筛选、初始内容、对话/状态历史、追加回复、关闭和重新打开；加载、空列表、权限错误和冲突都明确展示。用户页面需要已有账号或网站原有注册流程，插件不新建注册入口。本版不含附件、内部备注、邮件提醒、SLA 或第三方客服连接。
+
 ## Dashboard 接入
 
-仓库中的 [apps/dashboard](../../apps/dashboard/README.md) 是基于指定模板的 Next.js 管理后台，保留原排版、配色、横向 Tabs、图表和弹窗动效，包含概览、用户与会话、套餐、订单、会员、积分和操作记录。它使用 `@app/auth-sdk/react`、`adminClient()` 与 `businessClient()` 调用真实接口；页面源码不随 `auth-sdk.tgz` 分发。
+仓库中的 [apps/dashboard](../../apps/dashboard/README.md) 是基于指定模板的 Next.js 管理后台，保留原排版、配色、横向 Tabs、图表和弹窗动效，包含概览、用户与会话、套餐、订单、会员、积分、操作记录、监控和工单。它使用 `@app/auth-sdk/react`、`adminClient()`、`businessClient()` 与 `ticketsClient()` 调用真实接口；页面源码不随 `auth-sdk.tgz` 分发。
 
 本地从仓库根目录运行 `pnpm build:sdk`，复制 `apps/dashboard/.env.example` 为 `apps/dashboard/.env.local`，填写密钥、数据库、初始管理员及 `BETTER_AUTH_URL=http://127.0.0.1:3001`，然后执行 `pnpm dashboard:setup` 和 `pnpm dashboard:dev`。初始化命令会迁移表并创建新管理员，访问地址为 `http://127.0.0.1:3001`；具体配置和生产数据库要求见应用说明。
 
 需要 Google 登录时填写 `GOOGLE_CLIENT_ID`、`GOOGLE_CLIENT_SECRET`，登记对应认证回调并重启；两项留空时不显示 Google 入口。已有管理员首次接入可先用邮箱密码登录，再点击顶部“绑定 Google 账号”，之后从登录页使用 Google。具体步骤见 [Dashboard Google 登录](../../apps/dashboard/README.md#google-登录与账号绑定)。
 
-迁入已有网站时，复用 `apps/dashboard/components` 中的面板，将 `apps/dashboard/lib/auth.ts` 的 `getAuth()` 接到网站现有认证实例，在 `lib/auth-client.ts` 复用同源认证路由，并为该实例启用 `admin({ auditLog: true })`、`subscription({ catalog: true })`、`credits()` 和 `business({ providers })`。管理员和网站用户共用同一数据库，已有 `/api/auth` 路由无需重复创建。保留网站原有注册策略和服务端权限校验；支付适配器、付款及退款核验仍由网站可信服务端配置。
+迁入已有网站时，复用 `apps/dashboard/components` 中的面板，将 `apps/dashboard/lib/auth.ts` 的 `getAuth()` 接到网站现有认证实例，在 `lib/auth-client.ts` 复用同源认证路由，并为该实例启用 `admin({ auditLog: true })`、`tickets()`、`subscription({ catalog: true })`、`credits()` 和 `business({ providers })`。管理员和网站用户共用同一数据库，已有 `/api/auth` 路由无需重复创建。保留网站原有注册策略和服务端权限校验；支付适配器、付款及退款核验仍由网站可信服务端配置。
 
 复用登录界面时还需复制 `apps/dashboard/public/google-g.png` 到网站的 `public/google-g.png`；服务端页面只传 Google 启用标记和安全错误提示，不传凭据。
 

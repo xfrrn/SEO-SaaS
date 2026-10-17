@@ -66,6 +66,9 @@ SSO、Passkey、SCIM 等独立包的源码和测试仍保留，主 SDK 的打包
 | 导入路径 | 功能 |
 | --- | --- |
 | `@app/auth-sdk/server` | `betterAuth`、认证配置及服务端类型 |
+| `@app/auth-sdk/migrations` | `getMigrations` 完整认证与插件数据库迁移 |
+| `@app/auth-sdk/tickets` | `tickets` 用户反馈工单、管理员处理、状态历史与类型 |
+| `@app/auth-sdk/tickets/client` | `ticketsClient` 用户与管理员工单接口 |
 | `@app/auth-sdk/metrics` | 环境变量控制的站点只读统计接口 `createMetricsHandler` |
 | `@app/auth-sdk/plugins` | 内置服务端插件 |
 | `@app/auth-sdk/client/plugins` | 内置客户端插件 |
@@ -129,6 +132,14 @@ export const { GET, POST } = toNextJsHandler(auth);
 ```
 
 数据库表需按认证配置和启用的插件预先迁移。SDK 不会自动建表，也不会独立启动 HTTP 服务；由使用方应用挂载认证路由、配置环境变量和管理数据库迁移。
+
+## 用户反馈工单
+
+SDK 提供独立的 `tickets()` 与 `ticketsClient()`，复用网站已有认证路由和数据库。用户可提交、分页查看自己的工单和追加文字回复；管理员可查看所有工单、回复及切换“待处理 / 处理中 / 已关闭”，状态变更保存在对话历史，管理员操作同步进入审计。
+
+自带 Dashboard 已启用该插件：用户访问 `/support`，管理员进入“工单”页签。升级先用完整 `auth.options` 执行数据库迁移，新增 `supportTicket`、`supportTicketEntry` 及其唯一索引；已有安装不要重复运行管理员初始化脚本。完整接口、迁移和网站示例见 [工单接入说明](./packages/app-sdk/README.md#用户反馈工单)。
+
+工单需要真实 SQL 事务和 `admin({ auditLog: true })`。匿名访问返回 401，越权访问他人工单返回 404，普通用户不能访问管理接口。创建、回复和状态写入均使用稳定 UUID 重试键；并发更新冲突返回 409，刷新后重试。已关闭工单需管理员重新打开后回复。本版提供文字工单，不含附件、邮件通知或第三方客服接入。
 
 ## Google 登录
 

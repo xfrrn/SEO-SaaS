@@ -4,6 +4,8 @@
 
 保留概览、用户与会话、商品套餐、订单与履约重试、会员、积分流水与人工调整、操作记录。移除原来的个人财务假数据、收支/储蓄/贷款/目标演示、追踪脚本及不使用的界面组件。生产界面不以演示数据替代接口失败。
 
+新增用户反馈工单：用户在 `/support` 提交、查看自己的反馈和追加回复；管理员在“工单”页签查看全部反馈、回复、修改状态。网站与后台共用现有认证实例和数据库。
+
 ## 本地启动
 
 需要支持 `--experimental-strip-types` 的 Node.js（建议 Node 22.18+）与 pnpm。在仓库根目录执行：
@@ -90,6 +92,18 @@ https://你的网站域名/api/auth/callback/google
 
 网站直接接入的完整配置、路由、前端调用及常见错误见 [SDK Google 登录](../../packages/app-sdk/README.md#google-登录)。若将后台迁到 `/admin`，登录和绑定返回当前页面路径，Google 控制台回调仍指向认证路由 `/api/auth/callback/google`。
 
+## 用户反馈工单
+
+Dashboard 默认注册 `tickets()` 与 `ticketsClient()`，不需要新增环境变量。用户从登录页“提交与查看反馈”链接进入 `/support`，或直接打开此路径；页面支持现有邮箱密码与已配置的 Google 登录。普通用户无法进入管理员面板，但可以在反馈中心管理自己的工单。
+
+用户可以填写标题（最多 200 字符）和问题描述（最多 10000 字符）、分页和按状态筛选自己的工单、阅读完整文字对话及追加回复。管理员打开“工单”页签，选择工单后回复，或通过状态按钮切换“待处理 / 处理中 / 已关闭”。状态变化保留在对话历史；已关闭工单须管理员重新打开后再回复。页面显示用户 ID 供管理员关联用户面板。
+
+升级前备份数据库，使用**完整** `getAuth().options` 执行显式迁移，新增 `supportTicket`、`supportTicketEntry` 和复合唯一索引。已有安装不能重跑 `dashboard:setup` 来覆盖管理员；在网站现有迁移命令中调用原生 `getMigrations(auth.options).runMigrations()`。SQL 事务、Admin 审计表和唯一索引是必需条件。应用请求不会自动迁移。
+
+回复、状态记录、revision 和管理员审计在同一事务提交；失败回滚，冲突提示刷新。界面复用现有会话存储重试机制：未确认请求复用同一个 UUID 和载荷，确认成功后清除。若存储不可用会明确阻止写入；刷新、关闭标签页或清理会话存储后，应先检查工单是否已保存，再决定是否创建新操作。工单内容按纯文本渲染，用户不能指定所有者、作者或管理员角色；删除账号保留工单历史及用户 ID。
+
+网站独立接入、类型、迁移、服务端与浏览器接口及重试规则见 [SDK 工单说明](../../packages/app-sdk/README.md#用户反馈工单)。迁入已有网站时复制 `tickets-panel.tsx`、`ticket-thread.tsx` 并复用共享组件和网站 `authClient`；保留 `/support` 或改为网站自己的反馈路径。工单使用现有 `/api/auth` 路由，不接收邮件，不发送邮件提醒，本版不支持附件。
+
 ## 迁移与管理员初始化
 
 `pnpm dashboard:setup` 是显式有副作用的初始化命令：验证环境后，使用 `getMigrations(auth.options).runMigrations()` 应用真实认证、目录、积分、业务和审计表迁移，再创建指定的新管理员并记录引导审计。请先核对目标数据库；已有业务库先备份并审查迁移。
@@ -100,7 +114,7 @@ https://你的网站域名/api/auth/callback/google
 
 ## 接入已有网站
 
-这个应用使用 SDK 入口及 `admin({ auditLog: true })`、`subscription({ catalog: true })`、`credits()`、`business({ providers, orderTtlMs: 60 * 60_000 })`。`lib/payments.ts` 按环境配置注册 Stripe、PayPal 或 Waffo 适配器，`lib/email.ts` 提供 SMTP 邮件回调。迁入网站时复用网站的 **同一个 auth 实例、数据库、密钥和认证路由**，将 `getAuth()` 改为返回网站现有实例，并补齐上述插件、邮件回调、支付路由及对应迁移；不要重新维护一套互不相通的管理员和用户库。
+这个应用使用 SDK 入口及 `admin({ auditLog: true })`、`tickets()`、`subscription({ catalog: true })`、`credits()`、`business({ providers, orderTtlMs: 60 * 60_000 })`。`lib/payments.ts` 按环境配置注册 Stripe、PayPal 或 Waffo 适配器，`lib/email.ts` 提供 SMTP 邮件回调。迁入网站时复用网站的 **同一个 auth 实例、数据库、密钥和认证路由**，将 `getAuth()` 改为返回网站现有实例，并补齐上述插件、邮件回调、支付路由及对应迁移；不要重新维护一套互不相通的管理员和用户库。
 
 将后台页面放到网站需要的路径（例如 `/admin`），客户端继续使用同源 `/api/auth`，付款返回页位于 `/payment/return`，支付通知路由位于 `/api/payments/webhook`。若调整这些路径，同步修改支付适配器的回调地址和渠道后台的通知配置。已有同源认证路由时复用它，避免安装第二个冲突的 `/api/auth/[...all]`。应用路由使用 Node.js runtime；权限由服务端检查，前端隐藏按钮不能替代授权。
 
@@ -186,3 +200,5 @@ pnpm dashboard:build
 ```
 
 浏览器仅需安装一次；已有可用 Chromium 时可跳过安装。配置和金额转换单元测试不连接数据库，初始化和 Google 回调测试使用独立 SQLite 文件；界面测试使用隔离的本地数据库和随机凭据。Google 回归覆盖凭据成对校验、授权地址与 PKCE、真实认证回调、既有管理员绑定、新用户普通角色、错误 audience、取消授权、错误提示、键盘和桌面/移动布局；仅 Google 远端响应使用明确的测试替身，不读取开发者 Google 凭据。部署后仍需使用真实 Google 客户端完成登录和绑定联调。支付与邮件测试使用模拟服务响应，不会实际扣款或发送邮件，也不能替代商户自身的沙箱联调。构建前先构建本地 SDK；工作区依赖由根目录 `pnpm-lock.yaml` 管理。
+
+工单浏览器回归使用真实 SDK、认证接口和隔离 SQLite，覆盖用户提交与回复、跨用户隔离、管理权限、管理员回复与状态变更、关闭后禁止回复、重新打开、刷新持久化、纯文本展示及移动端明暗主题。SDK 回归另覆盖幂等重试、冲突检测、降权/封禁/模拟会话、CSRF 和审计失败回滚；不读取或迁移开发、生产数据库。

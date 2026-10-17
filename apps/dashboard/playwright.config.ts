@@ -48,7 +48,7 @@ Object.assign(process.env, environment, {
 
 export default defineConfig({
 	testDir: "./test",
-	testMatch: ["dashboard.spec.ts", "google.spec.ts"],
+	testMatch: ["dashboard.spec.ts", "google.spec.ts", "tickets.spec.ts"],
 	globalSetup: "./test/e2e-setup.ts",
 	fullyParallel: false,
 	workers: 1,

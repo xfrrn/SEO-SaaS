@@ -17,6 +17,21 @@
     "lint:package": "publint run --strict --pack false"
   },
   "exports": {
+    "./migrations": {
+      "dev-source": "./src/migrations.ts",
+      "types": "./dist/migrations.d.mts",
+      "default": "./dist/migrations.mjs"
+    },
+    "./tickets": {
+      "dev-source": "./src/tickets.ts",
+      "types": "./dist/tickets.d.mts",
+      "default": "./dist/tickets.mjs"
+    },
+    "./tickets/client": {
+      "dev-source": "./src/tickets/client.ts",
+      "types": "./dist/tickets/client.d.mts",
+      "default": "./dist/tickets/client.mjs"
+    },
     "./waffo": {
       "dev-source": "./src/waffo.ts",
       "types": "./dist/waffo.d.mts",
@@ -110,6 +125,15 @@
   },
   "typesVersions": {
     "*": {
+      "migrations": [
+        "./dist/migrations.d.mts"
+      ],
+      "tickets": [
+        "./dist/tickets.d.mts"
+      ],
+      "tickets/client": [
+        "./dist/tickets/client.d.mts"
+      ],
       "waffo": [
         "./dist/waffo.d.mts"
       ],
@@ -167,6 +191,7 @@
     }
   },
   "dependencies": {
+    "zod": "catalog:",
     "@app/waffo": "workspace:^",
     "@app/business": "workspace:^",
     "@app/credits": "workspace:^",
