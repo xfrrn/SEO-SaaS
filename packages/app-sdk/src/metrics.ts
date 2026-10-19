@@ -1,10 +1,21 @@
 import type { AuthContext, BetterAuthRateLimitStorage } from "better-auth";
 import { constantTimeEqual } from "better-auth/crypto";
+import { parseMetricsQuery } from "./metrics/query";
+import { collectRegistrationMetrics } from "./metrics/registrations";
+
+export type { MetricsQuery } from "./metrics/query";
+export type {
+	MetricsUser,
+	MetricsUsersPage,
+	RegistrationMetrics,
+} from "./metrics/registrations";
+export { collectRegistrationMetrics, parseMetricsQuery };
 
 /** Server environment variables; pass process.env, Deno env, or Worker bindings. */
 export interface MetricsEnvironment extends Record<string, unknown> {
 	APP_METRICS_ENABLED?: string;
 	APP_METRICS_TOKEN?: string;
+	APP_METRICS_USERS_TOKEN?: string;
 	APP_METRICS_SITE_ID?: string;
 	APP_METRICS_RATE_LIMIT_PER_MINUTE?: string;
 }
@@ -16,7 +27,7 @@ export interface MetricsSnapshot {
 	timezone: "UTC";
 	totalUsers: number;
 	newUsers7d: number;
-	paidUsersThisMonth: number;
+	paidUsersThisMonth: number | null;
 	periods: {
 		newUsers: { from: string; to: string };
 		paidUsers: { from: string; to: string };
@@ -27,12 +38,16 @@ export interface MetricsSnapshot {
 export interface MetricsOptions {
 	env: MetricsEnvironment;
 	auth: {
-		$context: Promise<{ adapter: Pick<AuthContext["adapter"], "count"> }>;
+		$context: Promise<{
+			adapter: Pick<AuthContext["adapter"], "count"> &
+				Partial<Pick<AuthContext["adapter"], "findMany">>;
+		}>;
 	};
 	/**
 	 * Count distinct users with verified, positive successful payments in [from, to).
 	 * Define refund handling in the application. Honor signal and database timeouts.
-	 * Required when enabled; subscription status is not proof of payment.
+	 * Omit when payments are not connected; the snapshot then returns null.
+	 * Subscription status is not proof of payment.
 	 */
 	countPaidUsers?: (period: {
 		from: Date;
@@ -65,7 +80,7 @@ function rateLimited(retryAfter: number) {
 	});
 }
 
-// ponytail: these two bounded counters are per handler; use shared storage for replicas.
+// shortcut: counters are per handler; use shared storage for replicas.
 function localLimit(max: number) {
 	let start = 0;
 	let count = 0;
@@ -92,6 +107,7 @@ export function createMetricsHandler(options: MetricsOptions) {
 			response({ error: "Not found" }, 404);
 	}
 	const token = options.env.APP_METRICS_TOKEN;
+	const usersToken = options.env.APP_METRICS_USERS_TOKEN;
 	const siteId = options.env.APP_METRICS_SITE_ID;
 	const countPaidUsers = options.countPaidUsers;
 	if (!token || !/^[A-Za-z0-9_-]{32,256}$/.test(token)) {
@@ -104,9 +120,12 @@ export function createMetricsHandler(options: MetricsOptions) {
 			"APP_METRICS_SITE_ID must contain 1–128 letters, digits, _ or -",
 		);
 	}
-	if (typeof countPaidUsers !== "function") {
+	if (
+		usersToken !== undefined &&
+		(!/^[A-Za-z0-9_-]{32,256}$/.test(usersToken) || usersToken === token)
+	) {
 		throw new Error(
-			"Enabled metrics require countPaidUsers from verified payment records",
+			"APP_METRICS_USERS_TOKEN must be a distinct 32–256 character random URL-safe credential",
 		);
 	}
 	const rate = options.env.APP_METRICS_RATE_LIMIT_PER_MINUTE ?? "6";
@@ -131,7 +150,10 @@ export function createMetricsHandler(options: MetricsOptions) {
 		const supplied = /^Bearer ([A-Za-z0-9_-]{32,256})$/i.exec(
 			authorization,
 		)?.[1];
-		if (!supplied || !constantTimeEqual(token, supplied)) {
+		const aggregateAccess = supplied && constantTimeEqual(token, supplied);
+		const usersAccess =
+			supplied && usersToken && constantTimeEqual(usersToken, supplied);
+		if (!aggregateAccess && !usersAccess) {
 			return response({ error: "Unauthorized" }, 401, {
 				"WWW-Authenticate": "Bearer",
 			});
@@ -141,8 +163,14 @@ export function createMetricsHandler(options: MetricsOptions) {
 		if (request.method !== "GET") {
 			return response({ error: "Method not allowed" }, 405, { Allow: "GET" });
 		}
-		if (new URL(request.url).search) {
-			return response({ error: "Query parameters are not supported" }, 400);
+		let query: ReturnType<typeof parseMetricsQuery>;
+		try {
+			query = parseMetricsQuery(new URL(request.url), now);
+		} catch {
+			return response({ error: "Invalid metrics query" }, 400);
+		}
+		if (query.view === "users" ? !usersAccess : !aggregateAccess) {
+			return response({ error: "Forbidden" }, 403);
 		}
 		if (now < retryAt) return unavailable(Math.ceil((retryAt - now) / 1000));
 		if (running) return unavailable(1);
@@ -170,10 +198,22 @@ export function createMetricsHandler(options: MetricsOptions) {
 					);
 				}
 			}
-			if (cache && Date.now() < cache.expiresAt)
+			if (query.view === "snapshot" && cache && Date.now() < cache.expiresAt)
 				return response(cache.snapshot);
 			const { adapter } = await options.auth.$context;
 			controller.signal.throwIfAborted();
+			if (query.view !== "snapshot") {
+				if (!adapter.findMany)
+					throw new Error("Metrics require adapter.findMany");
+				return response(
+					await collectRegistrationMetrics(
+						{ count: adapter.count, findMany: adapter.findMany },
+						query,
+						siteId,
+						controller.signal,
+					),
+				);
+			}
 			const asOf = new Date();
 			const from = new Date(asOf.getTime() - 7 * day);
 			const monthStart = new Date(
@@ -191,19 +231,26 @@ export function createMetricsHandler(options: MetricsOptions) {
 						],
 					}),
 				),
-				Promise.resolve().then(() =>
-					countPaidUsers({
-						from: new Date(monthStart),
-						to: new Date(asOf),
-						signal: controller.signal,
-					}),
+				Promise.resolve().then(
+					() =>
+						countPaidUsers?.({
+							from: new Date(monthStart),
+							to: new Date(asOf),
+							signal: controller.signal,
+						}) ?? null,
 				),
 			]);
 			controller.signal.throwIfAborted();
 			const [totalUsers, newUsers7d, paidUsersThisMonth] = counts.map(
-				(result) => {
+				(result, index) => {
 					if (result.status === "rejected") throw result.reason;
-					if (!Number.isSafeInteger(result.value) || result.value < 0) {
+					if (index === 2 && !countPaidUsers && result.value === null)
+						return null;
+					if (
+						result.value === null ||
+						!Number.isSafeInteger(result.value) ||
+						result.value < 0
+					) {
 						throw new Error("Invalid metrics count");
 					}
 					return result.value;
@@ -215,7 +262,7 @@ export function createMetricsHandler(options: MetricsOptions) {
 				timezone: "UTC",
 				totalUsers: totalUsers!,
 				newUsers7d: newUsers7d!,
-				paidUsersThisMonth: paidUsersThisMonth!,
+				paidUsersThisMonth: paidUsersThisMonth ?? null,
 				periods: {
 					newUsers: { from: from.toISOString(), to: asOf.toISOString() },
 					paidUsers: { from: monthStart.toISOString(), to: asOf.toISOString() },

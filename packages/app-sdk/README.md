@@ -406,7 +406,7 @@ await authClient.business.orders.create({
 
 ## 用户付款统计
 
-付款统计已集成在现有 `business()` / `businessClient()` 中，沿用网站同一个认证实例、数据库和 `/api/auth` 路由，无需额外插件、密钥或统计服务。原有 `getBusinessOverview` 和 `createMetricsHandler` 合同保持不变；下面的新接口提供详细收入与消费数据，站点统计 handler 仍由网站提供 `countPaidUsers`。
+付款统计已集成在现有 `business()` / `businessClient()` 中，沿用网站同一个认证实例、数据库和 `/api/auth` 路由，无需额外插件、密钥或统计服务。原有 `getBusinessOverview` 保持不变；下面的新接口提供详细收入与消费数据，站点统计 handler 的付款数据由网站可选提供 `countPaidUsers`，未接入时返回 `null`。
 
 ### 网站查询示例
 
@@ -481,7 +481,7 @@ if (customer.error) throw new Error(customer.error.message || "无法读取用�
 
 ## SEO-worker 站点统计
 
-`createMetricsHandler` 返回原生 `(request: Request) => Promise<Response>` 处理函数，由网站挂载一个服务端路由，例如 `/internal/metrics`。接口只接受不带查询参数的 GET 请求，通过 `Authorization: Bearer <凭证>` 鉴权，不使用登录 Cookie，不返回用户明细。所有响应设置 `Cache-Control: no-store`；SDK 内部的短期快照缓存不属于 HTTP 缓存。
+`createMetricsHandler` 返回原生 `(request: Request) => Promise<Response>` 处理函数，由网站挂载一个服务端路由，例如 `/internal/metrics`。接口只接受 GET 请求，通过 `Authorization: Bearer <凭证>` 鉴权，不使用登录 Cookie。无参数仍返回原有快照；`view=registrations` 提供注册趋势，`view=users` 使用单独凭证提供最小邮箱明细。所有响应设置 `Cache-Control: no-store` 和 `Vary: Authorization`；仅无参数快照有短期内部缓存，邮箱明细不缓存。不引入管理员插件或任何写权限。
 
 第一期按独立网站数据库统计。`siteId` 是输出标签，不是租户查询条件；多个网站共用用户库时不能用不同 `siteId` 获取各站用户数，须先提供有明确站点归属过滤的统计实现。
 
@@ -492,11 +492,12 @@ if (customer.error) throw new Error(customer.error.message || "无法读取用�
 | `APP_METRICS_ENABLED` | 只有精确字符串 `true` 启用；默认关闭，处理函数返回 404 |
 | `APP_METRICS_SITE_ID` | 启用时必填，1～128 个英文字母、数字、`_` 或 `-` |
 | `APP_METRICS_TOKEN` | 启用时必填，32～256 个英文字母、数字、`_` 或 `-`；独立、密码学安全随机生成的服务凭证 |
+| `APP_METRICS_USERS_TOKEN` | 可选，明细专用独立凭证，格式同上且必须与聚合凭证不同；省略时禁止邮箱明细 |
 | `APP_METRICS_RATE_LIMIT_PER_MINUTE` | 可选，1～60 的整数，默认 6；限制每分钟已授权请求数，缓存命中也计数 |
 
 凭证仅保存于网站和 SEO-worker 服务端，不使用 `NEXT_PUBLIC_` 等会暴露给浏览器的环境变量，不复用 `BETTER_AUTH_SECRET`。可以通过 `crypto.getRandomValues(new Uint8Array(32))` 生成 32 字节随机数，再编码成 64 位十六进制字符串。只满足长度限制的人工密码不等于随机凭证。轮换时更新网站和 SEO-worker 两侧配置并重新创建处理函数。
 
-启用后无效配置或缺少 `countPaidUsers` 回调会在初始化时抛错；关闭时不会运行统计查询。SDK 显式接收 `env`，不自行读取进程环境；Node.js 可传 `process.env`，Cloudflare Workers 可传服务端环境绑定。
+启用后无效配置会在初始化时抛错；`countPaidUsers` 可省略，旧快照的 `paidUsersThisMonth` 此时返回 `null`，不会把未接付款当成零。关闭时不会运行统计查询。SDK 显式接收 `env`，不自行读取进程环境；Node.js 可传 `process.env`，Cloudflare Workers 可传服务端环境绑定，并可通过 `rateLimitStorage` 使用共享原子限流。
 
 ```ts
 // 使用方应用：app/internal/metrics/route.ts
@@ -519,7 +520,7 @@ export const GET = createMetricsHandler({
 | --- | --- |
 | `totalUsers` | 认证数据库当前存在的用户总数 |
 | `newUsers7d` | 当前存在且 `createdAt` 落在最近 7 × 24 小时 `[from, to)` 的用户数；不保留已注销用户的历史注册量 |
-| `paidUsersThisMonth` | UTC 当月月初至本次统计时间 `[from, to)` 内已成功付款的去重用户数，由应用付款查询回调提供 |
+| `paidUsersThisMonth` | UTC 当月月初至本次统计时间 `[from, to)` 内已成功付款的去重用户数，由应用付款查询回调提供；未提供回调为 `null` |
 
 `countPaidUsers({ from, to, signal })` 是应用提供的异步函数；`from`、`to` 为 `Date`，`signal` 为 `AbortSignal`，返回 `Promise<number>`，结果须为非负安全整数。PostgreSQL 驱动返回字符串计数时，应用需先转换并校验数字。查询须使用参数化条件，按可信付款完成时间限制 `[from, to)`，只统计经过服务端验签、订单归属及金额核验后持久化的成功付款，金额大于零，并按用户 ID 去重。退款政策由该回调决定，必须与后台展示口径一致；例如“本月成功付过款人数”可以保留之后退款的用户，“当前仍有净付款人数”则需排除已全额退款记录。统计 handler 本身不创建订单表，也不把试用或有效订阅算成成功付款；启用下文 `business` 后，可用其已核验订单实现该查询，仍须按传入区间统计。
 
@@ -548,6 +549,50 @@ export const GET = createMetricsHandler({
 }
 ```
 
+### 注册趋势与邮箱明细（schemaVersion 2）
+
+聚合请求：`GET /internal/metrics?view=registrations&from=2026-10-01&to=2026-10-08`，使用 `APP_METRICS_TOKEN`。`from/to` 必须是有效 `YYYY-MM-DD`，UTC 半开区间 `[from,to)`，长度 1～366 天；`from` 不得晚于 UTC 今天，`to` 最多 UTC 明天。缺失、未知、重复的参数均返回 400。
+
+```json
+{
+  "schemaVersion": 2,
+  "siteId": "my_site",
+  "timezone": "UTC",
+  "generatedAt": "2026-10-07T12:00:00.000Z",
+  "period": { "from": "2026-10-01", "to": "2026-10-03" },
+  "basis": "current_accounts",
+  "totalUsers": 20,
+  "registeredUsers": 2,
+  "verifiedUsers": 1,
+  "unverifiedUsers": 1,
+  "daily": [
+    { "date": "2026-10-01", "registrations": 2, "verifiedUsers": 1 },
+    { "date": "2026-10-02", "registrations": 0, "verifiedUsers": 0 }
+  ]
+}
+```
+
+`totalUsers` 是当前用户库总数；其余人数仅统计区间内当前仍存在的认证用户，按用户而非登录账号计数。`verifiedUsers` 表示这些用户目前邮箱已验证，`unverifiedUsers=registeredUsers-verifiedUsers`。`daily` 连续覆盖所有日期（零值保留）；当日仅查询到本次 `generatedAt` 前，期间结束日期仍按请求返回。不会保存已删除账号的历史注册量，也没有访客分母，不能解释为访客注册率或历史新增流水。
+
+明细请求：`GET /internal/metrics?view=users&from=2026-10-01&to=2026-10-08&page=1&q=example`，**只接受 `APP_METRICS_USERS_TOKEN`**。聚合凭证访问明细返回 403，明细凭证访问聚合/旧快照同样返回 403；省略明细凭证时聚合凭证也不能读取邮箱。`page` 可省略（默认 1），须为 1～999999 的整数，`pageSize` 固定 20 不接受覆盖；`q` 可省略，去除首尾空白后最多 200 字符，按邮箱或昵称做不区分大小写的字面子串搜索。结果按 `createdAt` 降序、`id` 升序稳定排序，超出总页数返回空 `items`。
+
+```json
+{
+  "schemaVersion": 2,
+  "siteId": "my_site",
+  "generatedAt": "2026-10-07T12:00:00.000Z",
+  "period": { "from": "2026-10-01", "to": "2026-10-08" },
+  "total": 1,
+  "page": 1,
+  "pageSize": 20,
+  "items": [{ "id": "user_a", "name": "Player", "email": "player@example.com", "emailVerified": true, "createdAt": "2026-10-02T00:00:00.000Z" }]
+}
+```
+
+新查询复用认证 adapter，尊重 `user.modelName` 和字段映射（例如 `player_user`）。聚合仅投影 `id/createdAt/emailVerified`；明细仅投影并返回上述五个字段，不输出生日、密码、会话或 token。按 ID keyset 每批最多 500 条，单次区间最多扫描 10,000 个现存用户，超限明确返回 503，不截断为成功。两类查询不复用内部缓存。扫描前后校核区间计数，聚合还校核总人数；发现可检测的增删不一致返回 503。此检查不提供事务快照，不能检测所有等量替换或验证状态并发变化；需要严格一致性时应扩展数据库聚合/快照能力。
+
+同一入口还导出 `parseMetricsQuery(url, now)`、`collectRegistrationMetrics(adapter, query, siteId, signal)` 和 `MetricsQuery`，供网站受保护后台复用相同的校验、统计和字段投影。这些是**仅可信服务端**的底层服务，不自带 HTTP 鉴权/限流：调用方必须先完成身份认证与操作授权，使用解析器验证参数、排除 `view:"snapshot"`，并传入有超时的 `AbortSignal`。本地后台无需开启外部 metrics 或伪造 Bearer；HTTP 对外接口必须使用 `createMetricsHandler`，不能直接暴露底层函数。底层服务失败会抛错，调用方不得吞错或伪造零值。
+
 ### 限流与服务保护
 
 - 每个处理函数有鉴权前的固定限流：每分钟最多 60 次尝试，错误凭证也计入；通过鉴权后还受默认每分钟 6 次的限制。限额按整个站点处理函数计算，不依据客户端传入的 IP 创建桶。
@@ -561,7 +606,7 @@ export const GET = createMetricsHandler({
 
 SEO-worker 保存 `siteId → HTTPS 接口 URL、服务凭证` 的服务端配置，使用已登记地址发送 `Authorization: Bearer <凭证>`，不从浏览器接受任意目标 URL 或向浏览器返回凭证。建议每 1～5 分钟采集一次或按需刷新；遇到 429/503 遵循 `Retry-After` 退避，保留最后成功结果及其 `generatedAt` 并标明暂时不可用，不把请求失败显示成用户数为零。
 
-SDK 不会自动注册到 SEO-worker、推送数据或创建采集定时任务。SEO-worker 接入只需登记该网站的地址和凭证，再读取上述三个字段。
+SDK 不会自动注册到 SEO-worker、推送数据或创建采集定时任务。SEO-worker 登记该网站的地址和聚合凭证；需要邮箱明细时另外登记专用明细凭证，并在消费端限制可读取邮箱的角色，不把两种凭证返回浏览器。
 
 ## 未付款订单有效期
 

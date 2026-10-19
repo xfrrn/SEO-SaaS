@@ -102,7 +102,6 @@ describe("private site metrics", () => {
 				}),
 			).toThrow();
 		}
-		expect(() => createMetricsHandler({ auth, env })).toThrow();
 		expect(count).not.toHaveBeenCalled();
 		expect(countPaidUsers).not.toHaveBeenCalled();
 	});

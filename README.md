@@ -164,7 +164,7 @@ GOOGLE_CLIENT_SECRET=<该客户端的密钥，仅保存在服务端>
 
 ## SEO-worker 站点统计
 
-`@app/auth-sdk/metrics` 提供可选的 `createMetricsHandler`，第一期仅返回当前用户数、最近 7 × 24 小时新增用户数、UTC 本月至今的付费用户数。每个网站使用独立数据库、站点 ID 和服务凭证；`siteId` 只标识返回数据，不会按站点过滤共享用户库。
+`@app/auth-sdk/metrics` 提供可选的 `createMetricsHandler`：无查询参数继续返回当前用户数、最近 7 × 24 小时新增用户数、UTC 本月至今的付费用户数；支持按 UTC 日期查询注册趋势，以及使用独立凭证分页查询邮箱/昵称明细。每个网站使用独立数据库、站点 ID 和服务凭证；`siteId` 只标识返回数据，不会按站点过滤共享用户库。
 
 在接入网站的服务端环境变量中开启，凭证由网站与 SEO-worker 的服务端保存：
 
@@ -172,10 +172,11 @@ GOOGLE_CLIENT_SECRET=<该客户端的密钥，仅保存在服务端>
 APP_METRICS_ENABLED=true
 APP_METRICS_SITE_ID=my_site
 APP_METRICS_TOKEN=<替换为独立随机生成的服务凭证>
+APP_METRICS_USERS_TOKEN=<可选，明细专用的另一份独立随机凭证>
 APP_METRICS_RATE_LIMIT_PER_MINUTE=6
 ```
 
-只有 `APP_METRICS_ENABLED` 精确为 `true` 才启用；其他值返回 404。凭证必须是 32～256 个 URL 安全字符，须使用密码学安全随机数生成，不能复用认证密钥或放入前端环境变量。启用后缺少凭证、站点 ID 或付款查询回调会在初始化时抛错。
+只有 `APP_METRICS_ENABLED` 精确为 `true` 才启用；其他值返回 404。凭证必须是 32～256 个 URL 安全字符，须使用密码学安全随机数生成，不能复用认证密钥或放入前端环境变量。启用后缺少聚合凭证、站点 ID 或配置无效会在初始化时抛错。`countPaidUsers` 可省略，未接付款查询时旧快照的 `paidUsersThisMonth` 返回 `null`，不会伪造为零。
 
 例如在使用方 Next.js 的 `app/internal/metrics/route.ts` 中挂载：
 
@@ -192,11 +193,17 @@ export const GET = createMetricsHandler({
 });
 ```
 
-SEO-worker 使用 `Authorization: Bearer <凭证>` 请求已登记的 HTTPS 接口地址，不带查询参数。SDK 统计认证用户表；应用的 `countPaidUsers` 必须查询已核验、成功且金额大于零的付款记录，并按用户去重，不能使用有效订阅数代替付费人数。
+SEO-worker 使用 `Authorization: Bearer <凭证>` 请求已登记的 HTTPS 接口地址。聚合凭证支持无参数旧快照或 `?view=registrations&from=2026-10-01&to=2026-10-08`；日期为 UTC 半开区间 `[from,to)`，最多 366 天，`from` 不能晚于今天，`to` 最多明天。返回 `schemaVersion:2`、完整每日零值、当前总用户数、区间注册及已验证/未验证人数，口径为 `basis:current_accounts`，不含已删除账号的历史注册，也不是访客到注册的转化率。
+
+明细使用 `?view=users&from=2026-10-01&to=2026-10-08&page=1&q=example`，只接受 `APP_METRICS_USERS_TOKEN`，固定每页 20 条、按 `createdAt` 降序再按 `id` 升序，搜索邮箱/昵称的不区分大小写字面子串。聚合凭证无权获取邮箱；明细凭证无权读取聚合；未配置明细凭证时关闭该能力。明细只返回 `id/name/email/emailVerified/createdAt`，不会缓存邮箱。重复或未知参数返回 400。
+
+SDK 通过认证 adapter 尊重用户表/字段映射，区间按 ID 每批最多 500 条、最多扫描 10,000 个现存用户；超过上限返回 503，不截断。查询在本次 `generatedAt` 截止，当日数据尚未结束；扫描前后检查计数并在可检测的增删变动时返回 503，但这不是事务一致性快照。应用的 `countPaidUsers` 必须查询已核验、成功且金额大于零的付款记录，并按用户去重，不能使用有效订阅数代替付费人数。
 
 接口默认每实例每分钟最多接收 60 次鉴权尝试、6 次已授权请求，包含缓存读取；返回 429 时携带 `Retry-After`。统计快照缓存 60 秒，每实例最多执行一批统计查询，响应超时为 5 秒；查询失败返回 503 并退避 60 秒，不用 0 掩盖故障。多实例或无服务器部署需配置共享原子限流存储或网关限流，数据库还须设置查询超时及连接池上限；响应超时不能保证底层数据库查询取消。
 
 完整指标口径、环境变量、共享限流及 SEO-worker 接入约定见 [SDK 站点统计说明](./packages/app-sdk/README.md#seo-worker-站点统计)。
+
+网站受保护后台也可复用同入口导出的 `parseMetricsQuery`、`collectRegistrationMetrics` 与 `MetricsQuery`，无需启用外部统计。它们仅用于可信服务端：调用方须先认证授权、解析参数并传入有超时的 `AbortSignal`；HTTP 对外必须使用带鉴权和限流的 `createMetricsHandler`。
 
 ## 组合业务与后台接口
 
