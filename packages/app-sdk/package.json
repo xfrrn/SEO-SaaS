@@ -17,6 +17,31 @@
     "lint:package": "publint run --strict --pack false"
   },
   "exports": {
+    "./generation": {
+      "dev-source": "./src/generation.ts",
+      "types": "./dist/generation.d.mts",
+      "default": "./dist/generation.mjs"
+    },
+    "./generation/client": {
+      "dev-source": "./src/generation/client.ts",
+      "types": "./dist/generation/client.d.mts",
+      "default": "./dist/generation/client.mjs"
+    },
+    "./generation/providers/openai": {
+      "dev-source": "./src/generation/providers/openai.ts",
+      "types": "./dist/generation/providers/openai.d.mts",
+      "default": "./dist/generation/providers/openai.mjs"
+    },
+    "./generation/providers/google": {
+      "dev-source": "./src/generation/providers/google.ts",
+      "types": "./dist/generation/providers/google.d.mts",
+      "default": "./dist/generation/providers/google.mjs"
+    },
+    "./generation/providers/fal": {
+      "dev-source": "./src/generation/providers/fal.ts",
+      "types": "./dist/generation/providers/fal.d.mts",
+      "default": "./dist/generation/providers/fal.mjs"
+    },
     "./moderation": {
       "dev-source": "./src/moderation.ts",
       "types": "./dist/moderation.d.mts",
@@ -130,6 +155,21 @@
   },
   "typesVersions": {
     "*": {
+      "generation": [
+        "./dist/generation.d.mts"
+      ],
+      "generation/client": [
+        "./dist/generation/client.d.mts"
+      ],
+      "generation/providers/openai": [
+        "./dist/generation/providers/openai.d.mts"
+      ],
+      "generation/providers/google": [
+        "./dist/generation/providers/google.d.mts"
+      ],
+      "generation/providers/fal": [
+        "./dist/generation/providers/fal.d.mts"
+      ],
       "moderation": [
         "./dist/moderation.d.mts"
       ],
@@ -199,6 +239,7 @@
     }
   },
   "dependencies": {
+    "@app/generation": "workspace:^",
     "zod": "catalog:",
     "@app/waffo": "workspace:^",
     "@app/business": "workspace:^",

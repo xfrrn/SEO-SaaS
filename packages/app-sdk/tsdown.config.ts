@@ -4,6 +4,11 @@ export default defineConfig({
 	dts: { build: true, incremental: true },
 	format: ["esm"],
 	entry: [
+		"./src/generation.ts",
+		"./src/generation/client.ts",
+		"./src/generation/providers/openai.ts",
+		"./src/generation/providers/google.ts",
+		"./src/generation/providers/fal.ts",
 		"./src/moderation.ts",
 		"./src/migrations.ts",
 		"./src/tickets.ts",

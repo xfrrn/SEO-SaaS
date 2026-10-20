@@ -2,6 +2,7 @@
   "extends": "./tsconfig.base.json",
   "include": ["./*.ts", "./*.js"],
   "references": [
+    { "path": "./packages/generation/tsconfig.json" },
     { "path": "./packages/waffo/tsconfig.json" },
     {
       "path": "./packages/business/tsconfig.json"

@@ -6,6 +6,8 @@
 
 ## 开发
 
+通用图片 / 视频生成插件位于 `packages/generation`，与 `i18n`、`paypal` 同级，提供 OpenAI、Google、fal 接入、用户任务、幂等提交、持久化恢复与私有文件交付。主 SDK 入口为 `@app/auth-sdk/generation`；数据库迁移、宿主调度、存储与审核合同见 [生成插件接入](./packages/generation/README.md)。
+
 使用 Node.js 24（见 `.nvmrc`）和 pnpm 11。在仓库根目录执行：
 
 ```bash
@@ -23,6 +25,7 @@ pnpm typecheck
 | `packages/app-sdk` | 应用接入入口，统一导出认证、订阅、credits 及支付功能 |
 | `packages/subscription` | 通用套餐、订阅记录和权益查询，包名为 `@app/subscription` |
 | `packages/credits` | 独立积分余额、发放、扣减和流水插件，包名为 `@app/credits` |
+| `packages/generation` | 通用图片 / 视频生成、供应商适配、持久化任务与结果交付，包名为 `@app/generation` |
 | `packages/business` | 组合业务插件：商品管理、订单、付款履约、人工调整、退款后处理及后台查询 |
 | `packages/paypal` | 独立 PayPal 客户端及其测试，包名为 `@app/paypal` |
 | `packages/waffo` | Waffo Pancake 官方 SDK 导出与一次性业务支付适配器，包名为 `@app/waffo` |

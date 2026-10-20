@@ -54,7 +54,53 @@ async function linkInstalledDependencies(root, stage, manifest) {
 	}
 }
 
-async function assertModerationConsumer(stage) {
+async function assertPluginConsumers(stage) {
+	const generationRuntime = join(stage, "generation-consumer.mjs");
+	await writeFile(
+		generationRuntime,
+		`
+export { generation, createGenerationService } from "@app/auth-sdk/generation";
+export { generationClient } from "@app/auth-sdk/generation/client";
+export { createOpenAIGenerationProvider } from "@app/auth-sdk/generation/providers/openai";
+export { createGoogleGenerationProvider, createGoogleInteractionsGenerationProvider } from "@app/auth-sdk/generation/providers/google";
+export { createFalGenerationProvider } from "@app/auth-sdk/generation/providers/fal";
+`,
+	);
+	const generationEntry = await import(pathToFileURL(generationRuntime).href);
+	for (const name of [
+		"generation",
+		"createGenerationService",
+		"generationClient",
+		"createOpenAIGenerationProvider",
+		"createGoogleGenerationProvider",
+		"createGoogleInteractionsGenerationProvider",
+		"createFalGenerationProvider",
+	])
+		assert.equal(
+			typeof generationEntry[name],
+			"function",
+			`Missing generation export ${name}`,
+		);
+	const generationTypes = join(stage, "generation-consumer.mts");
+	await writeFile(
+		generationTypes,
+		`
+import { generation, createGenerationService } from "@app/auth-sdk/generation";
+import type { GenerationOptions, GenerationProvider, GenerationJob, ProviderResult } from "@app/auth-sdk/generation";
+import { generationClient } from "@app/auth-sdk/generation/client";
+import { createOpenAIGenerationProvider, openAIImageParameters } from "@app/auth-sdk/generation/providers/openai";
+import { createGoogleGenerationProvider, googleVideoParameters } from "@app/auth-sdk/generation/providers/google";
+import { createFalGenerationProvider } from "@app/auth-sdk/generation/providers/fal";
+declare const options: GenerationOptions;
+const plugin = generation(options);
+const client = generationClient();
+const provider: GenerationProvider = createOpenAIGenerationProvider({ apiKey: "consumer-test" });
+const google: GenerationProvider = createGoogleGenerationProvider({ apiKey: "consumer-test" });
+declare const job: GenerationJob;
+const state: GenerationJob["status"] = "needs_reconciliation";
+const result: ProviderResult = { status: "running", taskId: "consumer-test" };
+`,
+	);
 	const runtimeConsumer = join(stage, "moderation-consumer.mjs");
 	await writeFile(runtimeConsumer, 'export * from "@app/auth-sdk/moderation";');
 	const entry = await import(pathToFileURL(runtimeConsumer).href);
@@ -96,7 +142,7 @@ const mode: CheckCoverage["mode"] = "shadow";
 const flagged: Finding["native_flagged"] = null;
 `,
 	);
-	const program = ts.createProgram([source], {
+	const program = ts.createProgram([source, generationTypes], {
 		noEmit: true,
 		strict: true,
 		skipLibCheck: true,
@@ -117,13 +163,19 @@ const flagged: Finding["native_flagged"] = null;
 	);
 }
 
-test("packaged SDK includes moderation, ticket, client and migration entrypoints with declarations", async () => {
+test("packaged SDK includes generation, moderation, ticket, client and migration entrypoints with declarations", async () => {
 	const temporaryRoot = resolve(tmpdir());
 	const stage = await mkdtemp(join(temporaryRoot, "auth-sdk-entries-"));
 	try {
 		const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 		const manifest = await stageSDK(root, stage);
+		assert.ok(manifest.bundledDependencies.includes("@app/generation"));
 		for (const name of [
+			"generation",
+			"generation/client",
+			"generation/providers/openai",
+			"generation/providers/google",
+			"generation/providers/fal",
 			"moderation",
 			"tickets",
 			"tickets/client",
@@ -141,7 +193,7 @@ test("packaged SDK includes moderation, ticket, client and migration entrypoints
 			/用户反馈工单/,
 		);
 		await linkInstalledDependencies(root, stage, manifest);
-		await assertModerationConsumer(stage);
+		await assertPluginConsumers(stage);
 	} finally {
 		assert.equal(dirname(resolve(stage)), temporaryRoot);
 		await rm(stage, { recursive: true, force: true });

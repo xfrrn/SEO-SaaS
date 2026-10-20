@@ -6,6 +6,8 @@
 
 ## 安装
 
+生成能力通过独立 `packages/generation` 提供，统一入口为 `@app/auth-sdk/generation`。包含 OpenAI Images、Google 图片 / 视频、fal Queue、用户隔离任务、幂等提交与断点恢复。接入需宿主调度器、私有存储和数据库迁移；完整配置与安全边界见 [生成插件说明](../generation/README.md)。
+
 将仓库根目录执行 `pnpm pack:sdk` 生成的 `dist/auth-sdk.tgz` 复制到使用方项目：
 
 ```bash
@@ -22,6 +24,11 @@ pnpm add ./vendor/auth-sdk.tgz
 | --- | --- |
 | `@app/auth-sdk/server` | `betterAuth` 和服务端类型 |
 | `@app/auth-sdk/migrations` | `getMigrations` 原生迁移器，支持独立安装包 |
+| `@app/auth-sdk/generation` | `generation`、`createGenerationService`、任务类型与 schema |
+| `@app/auth-sdk/generation/client` | `generationClient` 模型、创建、查询、历史与取消接口 |
+| `@app/auth-sdk/generation/providers/openai` | `createOpenAIGenerationProvider`、OpenAI 图片参数 schema |
+| `@app/auth-sdk/generation/providers/google` | `createGoogleInteractionsGenerationProvider` 新媒体协议、`createGoogleGenerationProvider` 原协议及参数 schema |
+| `@app/auth-sdk/generation/providers/fal` | `createFalGenerationProvider`、按模型配置的 fal Queue 适配 |
 | `@app/auth-sdk/tickets` | `tickets` 工单插件、`SupportTicket` / `TicketEntry` / `TicketStatus` 类型 |
 | `@app/auth-sdk/tickets/client` | `ticketsClient` 用户工单与管理员处理接口 |
 | `@app/auth-sdk/moderation` | `moderation`、`createModeration`、检测器工厂、SQL 存储、审核类型和 schema |

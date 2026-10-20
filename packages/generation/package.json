@@ -1,0 +1,62 @@
+{
+  "name": "@app/generation",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Provider-neutral image and video generation jobs for Better Auth",
+  "type": "module",
+  "license": "MIT",
+  "sideEffects": false,
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "test": "vitest",
+    "typecheck": "tsc --build tsconfig.json && tsc --project tsconfig.test.json --noEmit",
+    "lint:package": "publint run --strict --pack false"
+  },
+  "exports": {
+    ".": {
+      "dev-source": "./src/index.ts",
+      "types": "./dist/index.d.mts",
+      "default": "./dist/index.mjs"
+    },
+    "./client": {
+      "dev-source": "./src/client.ts",
+      "types": "./dist/client.d.mts",
+      "default": "./dist/client.mjs"
+    },
+    "./providers/openai": {
+      "dev-source": "./src/providers/openai.ts",
+      "types": "./dist/providers/openai.d.mts",
+      "default": "./dist/providers/openai.mjs"
+    },
+    "./providers/google": {
+      "dev-source": "./src/providers/google.ts",
+      "types": "./dist/providers/google.d.mts",
+      "default": "./dist/providers/google.mjs"
+    },
+    "./providers/fal": {
+      "dev-source": "./src/providers/fal.ts",
+      "types": "./dist/providers/fal.d.mts",
+      "default": "./dist/providers/fal.mjs"
+    }
+  },
+  "dependencies": {
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@better-auth/core": "workspace:*",
+    "better-auth": "workspace:*",
+    "better-call": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:vitest"
+  },
+  "peerDependencies": {
+    "@better-auth/core": "workspace:^",
+    "better-auth": "workspace:^",
+    "better-call": "catalog:"
+  }
+}
