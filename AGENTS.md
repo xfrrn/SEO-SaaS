@@ -9,6 +9,7 @@ This is the Better Auth repository - a comprehensive authentication framework fo
 - `packages/app-sdk` - Application SDK entry points, re-exporting authentication, subscription, credits, and payment packages
 - `packages/business/src/analytics` - Verified local payment totals, UTC day/month trends, registration cohort conversion and per-user lifetime spending; currencies stay separate
 - `packages/app-sdk/src/tickets.ts` and `src/tickets/` - Independent feedback ticket plugin, schema, customer ownership, administrator processing and immutable conversation history
+- `packages/app-sdk/src/moderation.ts` and `src/moderation/` - Server-only moderation workflow, detectors, SQL evidence, authorization and lifecycle; host contracts and production validation boundaries in `docs/moderation-usage.md`
 - `packages/subscription` - Provider-neutral subscription plugin (`@app/subscription`), shared schema, types, and tests
 - `packages/credits` - Provider-neutral credits balance and append-only ledger plugin (`@app/credits`) and tests
 - `packages/paypal` - Standalone PayPal client (`@app/paypal`) and tests

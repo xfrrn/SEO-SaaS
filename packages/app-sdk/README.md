@@ -2,6 +2,8 @@
 
 `@app/auth-sdk` 统一导出 Better Auth 服务端、客户端插件、React、Next.js、通用订阅、credits、组合业务、Stripe 和 PayPal 功能，保持各功能包的参数、返回值和类型推导。
 
+内容审核入口 `@app/auth-sdk/moderation` 已实现服务端分层检测、工作流授权、回流、复核、声明及脱敏导出。完整调用合同、宿主适配器与接入限制见 [使用说明](../../docs/moderation-usage.md)；设计目标及生产验收边界见 [设计文档](../../docs/moderation-design.md)。
+
 ## 安装
 
 将仓库根目录执行 `pnpm pack:sdk` 生成的 `dist/auth-sdk.tgz` 复制到使用方项目：
@@ -22,6 +24,7 @@ pnpm add ./vendor/auth-sdk.tgz
 | `@app/auth-sdk/migrations` | `getMigrations` 原生迁移器，支持独立安装包 |
 | `@app/auth-sdk/tickets` | `tickets` 工单插件、`SupportTicket` / `TicketEntry` / `TicketStatus` 类型 |
 | `@app/auth-sdk/tickets/client` | `ticketsClient` 用户工单与管理员处理接口 |
+| `@app/auth-sdk/moderation` | `moderation`、`createModeration`、检测器工厂、SQL 存储、审核类型和 schema |
 | `@app/auth-sdk/metrics` | `createMetricsHandler` 站点只读统计接口 |
 | `@app/auth-sdk/plugins` | 内置服务端插件 |
 | `@app/auth-sdk/client/plugins` | 内置客户端插件 |

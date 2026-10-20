@@ -17,6 +17,11 @@
     "lint:package": "publint run --strict --pack false"
   },
   "exports": {
+    "./moderation": {
+      "dev-source": "./src/moderation.ts",
+      "types": "./dist/moderation.d.mts",
+      "default": "./dist/moderation.mjs"
+    },
     "./migrations": {
       "dev-source": "./src/migrations.ts",
       "types": "./dist/migrations.d.mts",
@@ -125,6 +130,9 @@
   },
   "typesVersions": {
     "*": {
+      "moderation": [
+        "./dist/moderation.d.mts"
+      ],
       "migrations": [
         "./dist/migrations.d.mts"
       ],

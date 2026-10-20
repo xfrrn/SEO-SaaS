@@ -2,6 +2,8 @@
 
 基于 Better Auth 的可修改、可测试 SDK。对外使用 `@app/auth-sdk`，保留原生认证、插件、数据库适配器和支付实现。仓库同时提供 `apps/dashboard` 管理后台，使用已有 SDK 管理用户、套餐、订单、会员、积分和操作记录。
 
+内容审核插件已提供 `@app/auth-sdk/moderation` 服务端入口：分层检测、完整操作授权、回流、复核与脱敏证据导出。接入与宿主适配器要求见 [使用说明](./docs/moderation-usage.md)，目标及验收边界见 [设计文档](./docs/moderation-design.md)。专用身份/版权/儿童安全服务需另行接入，能力缺口拒绝放行。
+
 ## 开发
 
 使用 Node.js 24（见 `.nvmrc`）和 pnpm 11。在仓库根目录执行：
@@ -69,6 +71,7 @@ SSO、Passkey、SCIM 等独立包的源码和测试仍保留，主 SDK 的打包
 | `@app/auth-sdk/migrations` | `getMigrations` 完整认证与插件数据库迁移 |
 | `@app/auth-sdk/tickets` | `tickets` 用户反馈工单、管理员处理、状态历史与类型 |
 | `@app/auth-sdk/tickets/client` | `ticketsClient` 用户与管理员工单接口 |
+| `@app/auth-sdk/moderation` | 内容审核服务端插件、检测器、SQL 存储、策略、复核与证据导出 |
 | `@app/auth-sdk/metrics` | 环境变量控制的站点只读统计接口 `createMetricsHandler` |
 | `@app/auth-sdk/plugins` | 内置服务端插件 |
 | `@app/auth-sdk/client/plugins` | 内置客户端插件 |

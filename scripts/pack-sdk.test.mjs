@@ -2,24 +2,133 @@ import assert from "node:assert/strict";
 import {
 	mkdir,
 	mkdtemp,
+	readdir,
 	readFile,
+	realpath,
 	rm,
 	rmdir,
+	symlink,
 	writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import ts from "typescript";
 import { stageSDK } from "./pack-sdk.mjs";
 
-test("packaged SDK includes ticket, client and migration entrypoints with declarations", async () => {
+async function linkInstalledDependencies(root, stage, manifest) {
+	const workspaces = (
+		await readdir(join(root, "packages"), { withFileTypes: true })
+	)
+		.filter((entry) => entry.isDirectory())
+		.map((entry) => join(root, "packages", entry.name));
+	for (const [name, version] of Object.entries({
+		...manifest.dependencies,
+		...manifest.optionalDependencies,
+	})) {
+		if (manifest.bundledDependencies.includes(name)) continue;
+		let installed;
+		for (const workspace of [root, ...workspaces]) {
+			try {
+				const candidate = await realpath(join(workspace, "node_modules", name));
+				if (
+					JSON.parse(await readFile(join(candidate, "package.json"), "utf8"))
+						.version === version
+				) {
+					installed = candidate;
+					break;
+				}
+			} catch (error) {
+				if (error.code !== "ENOENT") throw error;
+			}
+		}
+		assert.ok(installed, `Missing installed dependency ${name}@${version}`);
+		const target = join(stage, "node_modules", name);
+		await mkdir(dirname(target), { recursive: true });
+		await symlink(
+			installed,
+			target,
+			process.platform === "win32" ? "junction" : "dir",
+		);
+	}
+}
+
+async function assertModerationConsumer(stage) {
+	const runtimeConsumer = join(stage, "moderation-consumer.mjs");
+	await writeFile(runtimeConsumer, 'export * from "@app/auth-sdk/moderation";');
+	const entry = await import(pathToFileURL(runtimeConsumer).href);
+	for (const name of [
+		"moderation",
+		"createModeration",
+		"createModerationStore",
+		"createOpenAIModerationDetector",
+		"createTextRulesDetector",
+	])
+		assert.equal(
+			typeof entry[name],
+			"function",
+			`Missing runtime export ${name}`,
+		);
+	assert.equal(
+		entry.createTextRulesDetector({
+			version: "consumer-test",
+			literal_terms: [{ term: "fixture", category: "violence" }],
+		}).capabilities[0].inspection_scope,
+		"text.rules",
+	);
+	const source = join(stage, "consumer.mts");
+	await writeFile(
+		source,
+		`
+import { moderation, createModeration, createOpenAIModerationDetector, createTextRulesDetector } from "@app/auth-sdk/moderation";
+import type { CheckCoverage, CheckReport, CheckRequest, EvaluationRequest, EvaluationResult, Finding, ModerationDetector, ModerationOptions, OpenAIModerationOptions } from "@app/auth-sdk/moderation";
+declare const host: ModerationOptions;
+declare const evaluation: EvaluationRequest;
+declare const check: CheckRequest;
+const service = createModeration(host);
+const result: Promise<EvaluationResult> = service.evaluate(evaluation);
+const report: Promise<CheckReport> = service.check(check);
+const plugin = moderation(host);
+const openAI: (options: OpenAIModerationOptions) => ModerationDetector = createOpenAIModerationDetector;
+const rules: ModerationDetector = createTextRulesDetector({ version: "consumer-test", literal_terms: [{ term: "fixture", category: "violence" }] });
+const mode: CheckCoverage["mode"] = "shadow";
+const flagged: Finding["native_flagged"] = null;
+`,
+	);
+	const program = ts.createProgram([source], {
+		noEmit: true,
+		strict: true,
+		skipLibCheck: true,
+		module: ts.ModuleKind.NodeNext,
+		moduleResolution: ts.ModuleResolutionKind.NodeNext,
+		target: ts.ScriptTarget.ES2022,
+		types: [],
+	});
+	const diagnostics = ts.getPreEmitDiagnostics(program);
+	assert.equal(
+		diagnostics.length,
+		0,
+		ts.formatDiagnosticsWithColorAndContext(diagnostics, {
+			getCanonicalFileName: (file) => file,
+			getCurrentDirectory: () => stage,
+			getNewLine: () => "\n",
+		}),
+	);
+}
+
+test("packaged SDK includes moderation, ticket, client and migration entrypoints with declarations", async () => {
 	const temporaryRoot = resolve(tmpdir());
 	const stage = await mkdtemp(join(temporaryRoot, "auth-sdk-entries-"));
 	try {
 		const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 		const manifest = await stageSDK(root, stage);
-		for (const name of ["tickets", "tickets/client", "migrations"]) {
+		for (const name of [
+			"moderation",
+			"tickets",
+			"tickets/client",
+			"migrations",
+		]) {
 			const entry = manifest.exports[`./${name}`];
 			assert.equal(entry["dev-source"], undefined);
 			assert.ok(
@@ -31,6 +140,8 @@ test("packaged SDK includes ticket, client and migration entrypoints with declar
 			await readFile(join(stage, "README.md"), "utf8"),
 			/用户反馈工单/,
 		);
+		await linkInstalledDependencies(root, stage, manifest);
+		await assertModerationConsumer(stage);
 	} finally {
 		assert.equal(dirname(resolve(stage)), temporaryRoot);
 		await rm(stage, { recursive: true, force: true });
