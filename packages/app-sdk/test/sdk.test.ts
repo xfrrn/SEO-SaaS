@@ -1,13 +1,20 @@
+import * as sdkApiKey from "@app/auth-sdk/api-key";
+import * as sdkApiKeyClient from "@app/auth-sdk/api-key/client";
 import * as sdkBusiness from "@app/auth-sdk/business";
 import * as sdkBusinessClient from "@app/auth-sdk/business/client";
 import * as sdkClientPlugins from "@app/auth-sdk/client/plugins";
 import * as sdkCredits from "@app/auth-sdk/credits";
 import * as sdkCreditsClient from "@app/auth-sdk/credits/client";
+import * as sdkI18n from "@app/auth-sdk/i18n";
+import * as sdkI18nClient from "@app/auth-sdk/i18n/client";
+import * as sdkI18nLocales from "@app/auth-sdk/i18n/locales";
+import * as sdkMcp from "@app/auth-sdk/mcp";
 import * as sdkMigrations from "@app/auth-sdk/migrations";
 import * as sdkNextJS from "@app/auth-sdk/next-js";
 import * as sdkPayPal from "@app/auth-sdk/paypal";
 import * as sdkPlugins from "@app/auth-sdk/plugins";
 import * as sdkReact from "@app/auth-sdk/react";
+import * as sdkRedisStorage from "@app/auth-sdk/redis-storage";
 import * as sdkServer from "@app/auth-sdk/server";
 import * as sdkStripe from "@app/auth-sdk/stripe";
 import * as sdkStripeClient from "@app/auth-sdk/stripe/client";
@@ -22,6 +29,13 @@ import * as nativePayPal from "@app/paypal";
 import * as nativeSubscription from "@app/subscription";
 import * as nativeSubscriptionClient from "@app/subscription/client";
 import * as nativeWaffo from "@app/waffo";
+import * as nativeApiKey from "@better-auth/api-key";
+import * as nativeApiKeyClient from "@better-auth/api-key/client";
+import * as nativeI18n from "@better-auth/i18n";
+import * as nativeI18nClient from "@better-auth/i18n/client";
+import * as nativeI18nLocales from "@better-auth/i18n/locales";
+import * as nativeMcp from "@better-auth/mcp";
+import * as nativeRedisStorage from "@better-auth/redis-storage";
 import * as nativeStripe from "@better-auth/stripe";
 import * as nativeStripeClient from "@better-auth/stripe/client";
 import * as nativeServer from "better-auth";
@@ -36,6 +50,13 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 describe("SDK native compatibility", () => {
 	it("re-exports the original values from every entrypoint", () => {
 		for (const [sdk, native] of [
+			[sdkApiKey, nativeApiKey],
+			[sdkApiKeyClient, nativeApiKeyClient],
+			[sdkMcp, nativeMcp],
+			[sdkRedisStorage, nativeRedisStorage],
+			[sdkI18n, nativeI18n],
+			[sdkI18nClient, nativeI18nClient],
+			[sdkI18nLocales, nativeI18nLocales],
 			[sdkBusiness, nativeBusiness],
 			[sdkBusinessClient, nativeBusinessClient],
 			[sdkServer, nativeServer],

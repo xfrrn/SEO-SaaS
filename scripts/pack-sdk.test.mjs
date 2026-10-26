@@ -55,6 +55,88 @@ async function linkInstalledDependencies(root, stage, manifest) {
 }
 
 async function assertPluginConsumers(stage) {
+	const programmaticRuntime = join(stage, "programmatic-consumer.mjs");
+	await writeFile(
+		programmaticRuntime,
+		`
+export { apiKey } from "@app/auth-sdk/api-key";
+export { apiKeyClient } from "@app/auth-sdk/api-key/client";
+export { redisStorage } from "@app/auth-sdk/redis-storage";
+export { mcp, requireMcpAuth, createMcpProtectedRequestHandler } from "@app/auth-sdk/mcp";
+`,
+	);
+	const programmatic = await import(pathToFileURL(programmaticRuntime).href);
+	assert.equal(programmatic.apiKey().id, "api-key");
+	assert.equal(programmatic.apiKeyClient().id, "api-key");
+	assert.equal(typeof programmatic.redisStorage, "function");
+	assert.equal(typeof programmatic.requireMcpAuth, "function");
+	assert.ok(
+		programmatic.mcp({
+			loginPage: "/login",
+			consentPage: "/consent",
+			resource: "https://example.test/mcp",
+		}).endpoints,
+	);
+	const protectedHandler = programmatic.createMcpProtectedRequestHandler(
+		{
+			issuer: "https://example.test/api/auth",
+			audience: "https://example.test/mcp",
+		},
+		() => {
+			throw new Error("Unauthenticated MCP handler must not execute");
+		},
+	);
+	const unauthorized = await protectedHandler(
+		new Request("https://example.test/mcp"),
+	);
+	assert.equal(unauthorized.status, 401);
+	assert.match(
+		unauthorized.headers.get("WWW-Authenticate"),
+		/resource_metadata=/,
+	);
+	const i18nRuntime = join(stage, "i18n-consumer.mjs");
+	await writeFile(
+		i18nRuntime,
+		`
+export { i18n, locales } from "@app/auth-sdk/i18n";
+export { i18nClient } from "@app/auth-sdk/i18n/client";
+export { zh } from "@app/auth-sdk/i18n/locales";
+export { betterAuth } from "@app/auth-sdk/server";
+`,
+	);
+	const translated = await import(pathToFileURL(i18nRuntime).href);
+	assert.equal(
+		translated.i18n({
+			translations: { zh: translated.zh },
+			defaultLocale: "zh",
+		}).id,
+		"i18n",
+	);
+	assert.equal(translated.i18nClient().id, "i18n");
+	assert.equal(
+		translated.zh.INVALID_EMAIL_OR_PASSWORD,
+		translated.locales.zh.INVALID_EMAIL_OR_PASSWORD,
+	);
+	assert.ok(translated.zh.INVALID_EMAIL_OR_PASSWORD);
+	const auth = translated.betterAuth({
+		baseURL: "http://localhost:3000",
+		secret: "packaging-test-secret-at-least-32-characters",
+		emailAndPassword: { enabled: true },
+		plugins: [translated.i18n({ translations: translated.locales })],
+	});
+	const response = await auth.api.signInEmail({
+		body: { email: "missing@example.com", password: "wrong-password" },
+		headers: { "Accept-Language": "zh-CN" },
+		asResponse: true,
+	});
+	assert.equal(response.status, 401);
+	const error = await response.json();
+	assert.equal(error.code, "INVALID_EMAIL_OR_PASSWORD");
+	assert.equal(error.message, translated.zh.INVALID_EMAIL_OR_PASSWORD);
+	assert.equal(
+		error.originalMessage,
+		translated.locales.en.INVALID_EMAIL_OR_PASSWORD,
+	);
 	const generationRuntime = join(stage, "generation-consumer.mjs");
 	await writeFile(
 		generationRuntime,
@@ -128,6 +210,28 @@ const result: ProviderResult = { status: "running", taskId: "consumer-test" };
 		source,
 		`
 import { moderation, createModeration, createOpenAIModerationDetector, createTextRulesDetector } from "@app/auth-sdk/moderation";
+import { i18n } from "@app/auth-sdk/i18n";
+import type { I18nOptions } from "@app/auth-sdk/i18n";
+import { i18nClient } from "@app/auth-sdk/i18n/client";
+import { en, zh } from "@app/auth-sdk/i18n/locales";
+const translationOptions: I18nOptions<["en", "zh"]> = { translations: { en, zh }, defaultLocale: "en" };
+const translationPlugin = i18n(translationOptions);
+const translationClient = i18nClient();
+import { apiKey } from "@app/auth-sdk/api-key";
+import { apiKeyClient } from "@app/auth-sdk/api-key/client";
+import type { ApiKeyOptions } from "@app/auth-sdk/api-key/types";
+import { redisStorage } from "@app/auth-sdk/redis-storage";
+import type { RedisStorageConfig } from "@app/auth-sdk/redis-storage";
+import { mcp, createMcpProtectedRequestHandler } from "@app/auth-sdk/mcp";
+import type { McpOptions } from "@app/auth-sdk/mcp";
+const keyOptions: ApiKeyOptions = {};
+const keyPlugin = apiKey(undefined, keyOptions);
+const keyClient = apiKeyClient();
+declare const redisConfig: RedisStorageConfig;
+const secondary = redisStorage(redisConfig);
+const mcpOptions: McpOptions = { loginPage: "/login", consentPage: "/consent", resource: "https://example.test/mcp" };
+const mcpPlugin = mcp(mcpOptions);
+const protectedHandler = createMcpProtectedRequestHandler({ issuer: "https://example.test/api/auth", audience: mcpOptions.resource }, () => new Response("ok"));
 import type { CheckCoverage, CheckReport, CheckRequest, EvaluationRequest, EvaluationResult, Finding, ModerationDetector, ModerationOptions, OpenAIModerationOptions } from "@app/auth-sdk/moderation";
 declare const host: ModerationOptions;
 declare const evaluation: EvaluationRequest;
@@ -170,7 +274,28 @@ test("packaged SDK includes generation, moderation, ticket, client and migration
 		const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 		const manifest = await stageSDK(root, stage);
 		assert.ok(manifest.bundledDependencies.includes("@app/generation"));
+		assert.ok(manifest.bundledDependencies.includes("@better-auth/i18n"));
 		for (const name of [
+			"@better-auth/api-key",
+			"@better-auth/redis-storage",
+			"@better-auth/mcp",
+			"@better-auth/oauth-provider",
+		]) {
+			assert.ok(
+				manifest.bundledDependencies.includes(name),
+				`Missing bundled package ${name}`,
+			);
+		}
+		assert.equal(manifest.peerDependenciesMeta.ioredis.optional, true);
+		for (const name of [
+			"api-key",
+			"api-key/client",
+			"api-key/types",
+			"redis-storage",
+			"mcp",
+			"i18n",
+			"i18n/client",
+			"i18n/locales",
 			"generation",
 			"generation/client",
 			"generation/providers/openai",

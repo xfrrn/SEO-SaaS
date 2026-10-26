@@ -23,6 +23,14 @@ pnpm add ./vendor/auth-sdk.tgz
 | 入口 | 内容 |
 | --- | --- |
 | `@app/auth-sdk/server` | `betterAuth` 和服务端类型 |
+| `@app/auth-sdk/api-key` | `apiKey`、错误码与 API Key 类型 |
+| `@app/auth-sdk/api-key/client` | `apiKeyClient` 密钥管理客户端 |
+| `@app/auth-sdk/api-key/types` | API Key 配置与记录类型 |
+| `@app/auth-sdk/redis-storage` | `redisStorage` 共享 secondary storage 适配器 |
+| `@app/auth-sdk/mcp` | `mcp`、`requireMcpAuth`、`createMcpProtectedRequestHandler` 及配置类型 |
+| `@app/auth-sdk/i18n` | `i18n` 认证错误翻译插件、`locales` 与配置类型 |
+| `@app/auth-sdk/i18n/client` | `i18nClient` 客户端类型推导 |
+| `@app/auth-sdk/i18n/locales` | 22 种内置语言的认证错误词典 |
 | `@app/auth-sdk/migrations` | `getMigrations` 原生迁移器，支持独立安装包 |
 | `@app/auth-sdk/generation` | `generation`、`createGenerationService`、任务类型与 schema |
 | `@app/auth-sdk/generation/client` | `generationClient` 模型、创建、查询、历史与取消接口 |
@@ -55,6 +63,85 @@ pnpm add ./vendor/auth-sdk.tgz
 SDK 包本身不启动 HTTP 服务，管理页面由仓库中的 `apps/dashboard` 应用提供。密钥与数据库配置留在使用方服务端，数据库表需要预先迁移。PayPal 入口仅供服务端使用，默认沙箱，支持一次性付款，不含自动续费。
 
 PayPal.cn 全球收单的服务端客户端实现在独立的 `@app/paypal` 包中，由 `@app/auth-sdk/paypal` 转发导出 `createPayPalClient`，随完整 SDK 安装包一起分发。配置 `clientId`、`clientSecret`、`webhookId` 后，可以创建订单（`createOrder`）、查询订单（`getOrder`）、确认收款（`captureOrder`）和验证回调（`verifyWebhook`）；正式环境使用 `environment: "live"`。
+
+## 程序化认证与共享存储
+
+从 SDK 0.2.0 起，完整安装包包含本地 API Key、Redis Storage、MCP 及 MCP 依赖的 OAuth Provider；保持原生配置和类型，不自动启用。已有 i18n 也随该版本交付。无需单独安装这些 Better Auth 公共包。
+
+### API Key
+
+```ts
+import { apiKey } from "@app/auth-sdk/api-key";
+import { apiKeyClient } from "@app/auth-sdk/api-key/client";
+
+// 服务端：加入已有 betterAuth 的 plugins。
+apiKey();
+// 浏览器：加入已有 createAuthClient 的 plugins，供已登录用户管理密钥。
+apiKeyClient();
+```
+
+注册后按完整认证配置生成并执行迁移，会增加 `apikey` 表。后台服务/API 客户端在请求中发送 `x-api-key`，宿主自有业务路由须显式调用 `auth.api.verifyApiKey({ body: { key, permissions } })` 检查有效性及该操作需要的权限；默认不会为任意网站路由自动鉴权。密钥创建、撤销、过期与限流使用原生接口；不要把所有 API Key 当成管理员。`enableSessionForAPIKeys` 等额外能力需要显式配置。
+
+### Redis secondary storage
+
+启用此入口时安装 `pnpm add ioredis`，并由宿主创建连接：
+
+```ts
+import { Redis } from "ioredis";
+import { redisStorage } from "@app/auth-sdk/redis-storage";
+
+const redis = new Redis(process.env.REDIS_URL!);
+// 放入已有 betterAuth 配置。
+const secondaryStorage = redisStorage({ client: redis, keyPrefix: "my-site:auth:" });
+```
+
+通过 `betterAuth({ secondaryStorage, ...existingOptions })` 接入。多实例应使用相同 Redis 和前缀，不同网站隔离前缀；宿主负责关闭连接和维护 Redis。它支持会话缓存、临时状态和共享计数，限流是否使用它取决于认证的 `rateLimit.storage` 配置；不替代业务 SQL 数据库。SDK 将 `ioredis` 声明为可选 peer，未启用 Redis 的网站不必安装。
+
+### MCP 授权
+
+```ts
+import { mcp, requireMcpAuth } from "@app/auth-sdk/mcp";
+import { jwt } from "@app/auth-sdk/plugins";
+
+// 加入已有 betterAuth 的 plugins；resource 使用服务端配置的规范 URL。
+const plugins = [
+  jwt(),
+  mcp({ loginPage: "/login", consentPage: "/consent", resource: process.env.MCP_RESOURCE_URL! }),
+];
+// 宿主在创建 auth 后，用 requireMcpAuth(auth, handler, { resource, requiredScopes })
+// 包装实际 MCP 路由，并在工具执行处核对用户与数据权限。
+```
+
+MCP 提供 OAuth 授权及受保护资源元数据，校验 Token 的签名、issuer、audience、有效期及配置的 scope；缺失认证返回带 `WWW-Authenticate` 的 401。独立资源服务可用 `createMcpProtectedRequestHandler` 配置 issuer/audience。登录页、同意页、权限声明与 OAuth/JWT 表迁移由宿主完成。动态客户端注册默认关闭，按实际可信客户端接入方式配置。
+
+本包不提供 MCP 工具或协议传输；这些由宿主接入官方 MCP Server SDK。CIMD 不在此次打包范围中。详细原生行为见 `packages/mcp/README.md` 和导出的 TypeScript 类型。
+
+## 认证错误多语言
+
+完整安装包包含本地 `@better-auth/i18n`，无需另外安装；导出原生插件，不自动注册。`pnpm test:sdk` 包含 i18n 行为回归，`pnpm test:packaging` 验证三个入口的运行时与类型，以及中文请求的认证错误响应。服务端在认证配置中加入：
+
+```ts
+import { betterAuth } from "@app/auth-sdk/server";
+import { i18n } from "@app/auth-sdk/i18n";
+import { en, zh } from "@app/auth-sdk/i18n/locales";
+
+export const auth = betterAuth({
+  // 保留网站已有 database、secret、baseURL 和认证配置。
+  plugins: [
+    i18n({
+      translations: { en, zh },
+      defaultLocale: "en",
+      detection: ["cookie", "header"],
+    }),
+  ],
+});
+```
+
+上例优先读取 `locale` Cookie，再读取 `Accept-Language`（按权重匹配基础语言，如 `zh-CN` 匹配 `zh`）；未匹配使用 `en`。默认只检测请求头，也可按顺序配置 `session` 或 `callback`，分别使用会话用户的语言字段或自定义 `getLocale(ctx)`；插件不自动创建用户语言字段或设置 Cookie。
+
+认证请求失败后，插件按错误 `code` 查词典，只替换 `message`，保留 HTTP 状态与 `code`，并添加 `originalMessage`。没有对应翻译则保留原错误，不自动逐条回退到英文词典。内置词典覆盖核心认证错误；业务或其他插件错误可在对应语言词典中按错误码补充。
+
+客户端可从 `@app/auth-sdk/i18n/client` 导入 `i18nClient()` 并加入已有 `createAuthClient` 的 `plugins`；该插件只提供类型推导，翻译由服务端完成。前端显示响应中的 `error.message` 即可。i18n 不翻译页面文案、邮件、用户内容，也不改变内容审核策略。
 
 ## Google 登录
 

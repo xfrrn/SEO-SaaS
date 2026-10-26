@@ -7,6 +7,8 @@ This is the Better Auth repository - a comprehensive authentication framework fo
 - `packages/better-auth` - Main authentication library
 - `packages/core` - Shared core types and utilities
 - `packages/app-sdk` - Application SDK entry points, re-exporting authentication, subscription, credits, and payment packages
+- `packages/i18n` - Authentication API error translations; bundled with the SDK through `@app/auth-sdk/i18n`, `/i18n/client`, and `/i18n/locales`; opt-in registration, no page or email translation
+- `packages/api-key`, `packages/redis-storage`, `packages/mcp` - Native programmatic authentication, Redis secondary storage, and MCP authorization; SDK 0.2.0 bundles them with the MCP OAuth Provider dependency. Host opt-in, database migrations and route authorization remain required; ioredis is an optional SDK peer
 - `packages/business/src/analytics` - Verified local payment totals, UTC day/month trends, registration cohort conversion and per-user lifetime spending; currencies stay separate
 - `packages/app-sdk/src/tickets.ts` and `src/tickets/` - Independent feedback ticket plugin, schema, customer ownership, administrator processing and immutable conversation history
 - `packages/app-sdk/src/moderation.ts` and `src/moderation/` - Server-only moderation workflow, detectors, SQL evidence, authorization and lifecycle; host contracts and production validation boundaries in `docs/moderation-usage.md`
@@ -74,12 +76,13 @@ When a flow must synthesize an email, use `createPlaceholderEmail` with a stable
 ## Testing
 
 - SDK and native package tests use Vitest; packaging tests use `node:test`
-- `pnpm test:sdk` runs generation, the app SDK, PayPal, Waffo, Stripe business adapter, subscription, credits, business, and admin audit tests
+- `pnpm test:sdk` runs generation, the app SDK, i18n, API Key, Redis Storage, MCP, PayPal, Waffo, Stripe business adapter, subscription, credits, business, and admin audit tests
 - Use `getTestInstance()` from `better-auth/test`. It returns `{ client, auth, sessionSetter, ... }`
 - Pass client plugins via `clientOptions.plugins`
 - NEVER create separate clients with `createAuthClient()` in tests
 - Default test DB is SQLite in-memory; use `testWith` for other databases
 - External database tests can use `docker compose --project-directory . -f test/docker-compose.yml up -d`.
+- API Key regression includes PostgreSQL serial-ID coverage. Set `BETTER_AUTH_TEST_POSTGRES_URL` to an isolated test database (legacy local default remains `postgres://user:password@localhost:5432/better_auth`); fixtures create and remove their own random schemas. SDK CI supplies PostgreSQL 17
 - Regression tests: use `@see` for relevant issues or authoritative sources. Do not reference the current pull request or its review comments:
   ```typescript
   /**

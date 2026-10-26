@@ -11,6 +11,22 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: user
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: better_auth
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U user -d better_auth"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      BETTER_AUTH_TEST_POSTGRES_URL: postgres://user:password@localhost:5432/better_auth
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
       - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093

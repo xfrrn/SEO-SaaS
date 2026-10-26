@@ -77,7 +77,9 @@ export async function getTestInstance<
 		const { Kysely, PostgresDialect } = await import("kysely");
 		const { Pool } = await import("pg");
 		const pool = new Pool({
-			connectionString: "postgres://user:password@localhost:5432/better_auth",
+			connectionString:
+				process.env.BETTER_AUTH_TEST_POSTGRES_URL ??
+				"postgres://user:password@localhost:5432/better_auth",
 			options: postgresSchema
 				? `-c search_path=${postgresSchema},public`
 				: undefined,

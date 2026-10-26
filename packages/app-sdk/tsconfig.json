@@ -5,6 +5,10 @@
   },
   "include": ["./src", "./package.json"],
   "references": [
+    { "path": "../api-key/tsconfig.json" },
+    { "path": "../redis-storage/tsconfig.json" },
+    { "path": "../mcp/tsconfig.json" },
+    { "path": "../i18n/tsconfig.json" },
     { "path": "../generation/tsconfig.json" },
     { "path": "../waffo/tsconfig.json" },
     { "path": "../business/tsconfig.json" },

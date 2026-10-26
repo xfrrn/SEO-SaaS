@@ -16,6 +16,10 @@
     "../stripe/test/_factories.ts"
   ],
   "references": [
+    { "path": "../api-key/tsconfig.json" },
+    { "path": "../redis-storage/tsconfig.json" },
+    { "path": "../mcp/tsconfig.json" },
+    { "path": "../i18n/tsconfig.json" },
     { "path": "../business/tsconfig.json" },
     {
       "path": "../credits/tsconfig.json"

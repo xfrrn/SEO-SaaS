@@ -58,7 +58,7 @@ Dashboard 通过 `PAYMENT_PROVIDER=stripe`、`paypal` 或 `waffo` 选择收款�
 pnpm pack:sdk
 ```
 
-产物为 **`dist/auth-sdk.tgz`**。其中包含本仓库构建的认证核心、Kysely/内存适配器、通用订阅、credits、business、Stripe 及 PayPal 包，保留你的本地修改。复制到使用方项目的 `vendor/` 后安装：
+当前 SDK 版本为 **0.2.0**，变更见 [版本说明](./docs/sdk-0.2.0.md)。产物为 **`dist/auth-sdk.tgz`**。其中包含本仓库构建的认证核心、Kysely/内存适配器、i18n、API Key、Redis 存储、MCP 及其 OAuth Provider 依赖，以及通用订阅、credits、business、Stripe 及 PayPal 包，保留你的本地修改。复制到使用方项目的 `vendor/` 后安装：
 
 ```bash
 pnpm add ./vendor/auth-sdk.tgz
@@ -71,6 +71,14 @@ SSO、Passkey、SCIM 等独立包的源码和测试仍保留，主 SDK 的打包
 | 导入路径 | 功能 |
 | --- | --- |
 | `@app/auth-sdk/server` | `betterAuth`、认证配置及服务端类型 |
+| `@app/auth-sdk/api-key` | `apiKey` 程序化认证插件、错误码及类型 |
+| `@app/auth-sdk/api-key/client` | `apiKeyClient` 密钥管理客户端 |
+| `@app/auth-sdk/api-key/types` | API Key 配置与记录类型 |
+| `@app/auth-sdk/redis-storage` | `redisStorage` 临时状态、会话与限流的 secondary storage 适配器 |
+| `@app/auth-sdk/mcp` | `mcp` OAuth 授权、`requireMcpAuth` 与独立受保护请求处理器 |
+| `@app/auth-sdk/i18n` | `i18n` 认证错误翻译插件、`locales` 词典和配置类型 |
+| `@app/auth-sdk/i18n/client` | `i18nClient` 客户端类型推导 |
+| `@app/auth-sdk/i18n/locales` | 22 种内置语言的认证错误词典 |
 | `@app/auth-sdk/migrations` | `getMigrations` 完整认证与插件数据库迁移 |
 | `@app/auth-sdk/tickets` | `tickets` 用户反馈工单、管理员处理、状态历史与类型 |
 | `@app/auth-sdk/tickets/client` | `ticketsClient` 用户与管理员工单接口 |
@@ -92,6 +100,10 @@ SSO、Passkey、SCIM 等独立包的源码和测试仍保留，主 SDK 的打包
 | `@app/auth-sdk/stripe/client` | Stripe 客户端插件 |
 | `@app/auth-sdk/paypal` | PayPal 订单、收款和 webhook 验签 |
 | `@app/auth-sdk/waffo` | Waffo Pancake 官方 SDK、一次性业务支付与 webhook 验签（Node.js 20+） |
+
+i18n 随安装包交付，须显式注册才生效；仅翻译认证 API 的错误消息，不翻译页面、邮件或用户内容。配置及示例见 [i18n 接入](./packages/app-sdk/README.md#认证错误多语言)。
+
+API Key、Redis 存储和 MCP 均须宿主显式配置，安装不会自动开启认证方式、连接 Redis 或公开 MCP 工具。使用 Redis 时按需安装 `ioredis`；MCP 包含 OAuth Provider 依赖，不包含 MCP 协议服务端、工具实现或 CIMD 插件。配置及边界见 [程序化认证与共享存储](./packages/app-sdk/README.md#程序化认证与共享存储)。
 
 React、Next.js、Stripe 是按需安装的依赖；纯服务端认证不需要它们。数据库驱动由使用方按数据库类型安装，例如 PostgreSQL：
 

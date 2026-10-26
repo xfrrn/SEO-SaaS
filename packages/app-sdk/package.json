@@ -1,6 +1,6 @@
 {
   "name": "@app/auth-sdk",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Application SDK for Better Auth authentication and optional payments",
   "type": "module",
@@ -17,6 +17,46 @@
     "lint:package": "publint run --strict --pack false"
   },
   "exports": {
+    "./api-key": {
+      "dev-source": "./src/api-key.ts",
+      "types": "./dist/api-key.d.mts",
+      "default": "./dist/api-key.mjs"
+    },
+    "./api-key/client": {
+      "dev-source": "./src/api-key/client.ts",
+      "types": "./dist/api-key/client.d.mts",
+      "default": "./dist/api-key/client.mjs"
+    },
+    "./api-key/types": {
+      "dev-source": "./src/api-key/types.ts",
+      "types": "./dist/api-key/types.d.mts",
+      "default": "./dist/api-key/types.mjs"
+    },
+    "./redis-storage": {
+      "dev-source": "./src/redis-storage.ts",
+      "types": "./dist/redis-storage.d.mts",
+      "default": "./dist/redis-storage.mjs"
+    },
+    "./mcp": {
+      "dev-source": "./src/mcp.ts",
+      "types": "./dist/mcp.d.mts",
+      "default": "./dist/mcp.mjs"
+    },
+    "./i18n": {
+      "dev-source": "./src/i18n.ts",
+      "types": "./dist/i18n.d.mts",
+      "default": "./dist/i18n.mjs"
+    },
+    "./i18n/client": {
+      "dev-source": "./src/i18n/client.ts",
+      "types": "./dist/i18n/client.d.mts",
+      "default": "./dist/i18n/client.mjs"
+    },
+    "./i18n/locales": {
+      "dev-source": "./src/i18n/locales.ts",
+      "types": "./dist/i18n/locales.d.mts",
+      "default": "./dist/i18n/locales.mjs"
+    },
     "./generation": {
       "dev-source": "./src/generation.ts",
       "types": "./dist/generation.d.mts",
@@ -155,6 +195,30 @@
   },
   "typesVersions": {
     "*": {
+      "api-key": [
+        "./dist/api-key.d.mts"
+      ],
+      "api-key/client": [
+        "./dist/api-key/client.d.mts"
+      ],
+      "api-key/types": [
+        "./dist/api-key/types.d.mts"
+      ],
+      "redis-storage": [
+        "./dist/redis-storage.d.mts"
+      ],
+      "mcp": [
+        "./dist/mcp.d.mts"
+      ],
+      "i18n": [
+        "./dist/i18n.d.mts"
+      ],
+      "i18n/client": [
+        "./dist/i18n/client.d.mts"
+      ],
+      "i18n/locales": [
+        "./dist/i18n/locales.d.mts"
+      ],
       "generation": [
         "./dist/generation.d.mts"
       ],
@@ -239,6 +303,10 @@
     }
   },
   "dependencies": {
+    "@better-auth/api-key": "workspace:^",
+    "@better-auth/redis-storage": "workspace:^",
+    "@better-auth/mcp": "workspace:^",
+    "@better-auth/i18n": "workspace:^",
     "@app/generation": "workspace:^",
     "zod": "catalog:",
     "@app/waffo": "workspace:^",
@@ -263,6 +331,7 @@
     "vitest": "catalog:vitest"
   },
   "peerDependencies": {
+    "ioredis": "^5.0.0",
     "monitor-analytics-sdk": "0.1.1",
     "better-auth": "workspace:^",
     "@better-auth/stripe": "workspace:^",
@@ -271,6 +340,9 @@
     "stripe": "^18 || ^19 || ^20 || ^21 || ^22"
   },
   "peerDependenciesMeta": {
+    "ioredis": {
+      "optional": true
+    },
     "monitor-analytics-sdk": {
       "optional": true
     },
