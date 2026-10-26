@@ -1,6 +1,8 @@
 # 通用生成插件
 
-`@app/generation` 位于 `packages/generation`，与 `i18n`、`paypal` 同级。主安装包统一导出 `@app/auth-sdk/generation`、`/generation/client` 和 `/generation/providers/{openai,google,fal}`。插件不启动 HTTP 服务、后台定时器或外部队列。
+`@app/generation` 位于 `packages/generation`，与 `i18n`、`paypal` 同级。主安装包统一导出 `@app/auth-sdk/generation`、`/generation/client` 和 `/generation/providers/{openai,google,fal,kie}`。插件不启动 HTTP 服务、后台定时器或外部队列。
+
+SDK 0.3.0 新增 Kie.ai Market 图片 / 视频适配，采用显式模型映射和任务轮询；提供 Nano Banana 2 文生图 / 参考图生图，以及 Grok 文生视频 / 单图生视频的保守参数与映射。连接 SeeAPI 审核的完整步骤、素材引用转换、CDN 白名单和未验收边界见 [服务商接入](../../docs/seeapi-kie-usage.md)。
 
 首期支持文生图、参考图生图、文生视频、单图生视频。内置 OpenAI Images、Google Interactions 图片 / 视频、Google generateContent 图片 / Veo predictLongRunning 视频、fal Queue 适配器；其他生成器实现 `GenerationProvider` 即可接入。每个模型必须注册真实支持的操作、输入数量和参数 schema；注册一个平台不会自动开放平台全部模型。
 

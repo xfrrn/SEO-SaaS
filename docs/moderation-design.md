@@ -4,6 +4,8 @@
 
 本文保留确认的目标、首期范围和逻辑合同；实际 TypeScript API 与宿主责任见 [接入说明](./moderation-usage.md) 及 `packages/app-sdk/src/moderation.ts`。当前已提供服务端入口、SQL schema 和实现；未对生产数据库执行迁移或部署。PostgreSQL 生产并发、真实供应商和站点交付链尚未验收，不将本地逻辑测试倒推为生产可放行。
 
+2026-10-26 增量实现（SDK 0.3.0）：新增 SeeAPI 文字、图片和供应商视频抽样检测，使用独立 `video.provider_sampled_frames` 范围；不替代下文宿主抽帧及音轨要求。审核命令提供不透明租户隔离执行标识，新增有界 `provider_evidence` JSON 证据，无需新增表。与 Kie.ai 生成的联动及真实供应商未验收边界见 [接入说明](./seeapi-kie-usage.md)。
+
 本轮实现明确以下映射与收敛：
 
 - 逻辑记录保存在两张物理表 `moderationRecord` / `moderationTenantLock`；使用 SQL 真事务与租户短写锁，不新增一组业务专表。

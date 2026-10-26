@@ -1,4 +1,5 @@
 import { bounded, digest, moderationError, rank } from "./primitives";
+import { providerEvidenceSchema } from "./provider-evidence";
 import type {
 	BlockLevel,
 	CheckCoverage,
@@ -27,6 +28,7 @@ export function requestedCheckId(item: ContentItem, rule: PolicyRule) {
 
 /** Execute exact-scope checks, retaining failed primary evidence after recovery. */
 export async function runChecks(input: {
+	execution_key?: string;
 	items: ContentItem[];
 	rules: PolicyRule[];
 	detectors: ModerationDetector[];
@@ -90,6 +92,7 @@ export async function runChecks(input: {
 						input.timeout_ms,
 						(signal) =>
 							detector.check({
+								execution_key: input.execution_key,
 								items: [
 									...new Map(
 										group.map(({ check }) => [check.item.item_id, check.item]),
@@ -242,6 +245,8 @@ function validateResults(results: DetectorFinding[], checks: RequestedCheck[]) {
 					result.score > 1)) ||
 			typeof result.reason_code !== "string" ||
 			!result.reason_code ||
+			(result.provider_evidence !== undefined &&
+				!providerEvidenceSchema.safeParse(result.provider_evidence).success) ||
 			[
 				result.provider_model,
 				result.provider_request_id,
@@ -296,5 +301,8 @@ async function toFinding(
 		rule_id: check.rule.id,
 		reason_code: result.reason_code,
 		...(result.media_evidence ? { media_evidence: result.media_evidence } : {}),
+		...(result.provider_evidence
+			? { provider_evidence: result.provider_evidence }
+			: {}),
 	};
 }

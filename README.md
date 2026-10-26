@@ -58,7 +58,7 @@ Dashboard 通过 `PAYMENT_PROVIDER=stripe`、`paypal` 或 `waffo` 选择收款�
 pnpm pack:sdk
 ```
 
-当前 SDK 版本为 **0.2.0**，变更见 [版本说明](./docs/sdk-0.2.0.md)。产物为 **`dist/auth-sdk.tgz`**。其中包含本仓库构建的认证核心、Kysely/内存适配器、i18n、API Key、Redis 存储、MCP 及其 OAuth Provider 依赖，以及通用订阅、credits、business、Stripe 及 PayPal 包，保留你的本地修改。复制到使用方项目的 `vendor/` 后安装：
+当前 SDK 版本为 **0.3.0**，变更见 [版本说明](./docs/sdk-0.3.0.md)。产物为 **`dist/auth-sdk.tgz`**。其中包含本仓库构建的认证核心、Kysely/内存适配器、i18n、API Key、Redis 存储、MCP 及其 OAuth Provider 依赖，以及通用订阅、credits、business、Stripe 及 PayPal 包，保留你的本地修改。复制到使用方项目的 `vendor/` 后安装：
 
 ```bash
 pnpm add ./vendor/auth-sdk.tgz
@@ -83,6 +83,7 @@ SSO、Passkey、SCIM 等独立包的源码和测试仍保留，主 SDK 的打包
 | `@app/auth-sdk/tickets` | `tickets` 用户反馈工单、管理员处理、状态历史与类型 |
 | `@app/auth-sdk/tickets/client` | `ticketsClient` 用户与管理员工单接口 |
 | `@app/auth-sdk/moderation` | 内容审核服务端插件、检测器、SQL 存储、策略、复核与证据导出 |
+| `@app/auth-sdk/generation/providers/kie` | Kie.ai Market 图片/视频任务、Nano Banana 2 与 Grok 显式模型映射 |
 | `@app/auth-sdk/metrics` | 环境变量控制的站点只读统计接口 `createMetricsHandler` |
 | `@app/auth-sdk/plugins` | 内置服务端插件 |
 | `@app/auth-sdk/client/plugins` | 内置客户端插件 |
@@ -102,6 +103,8 @@ SSO、Passkey、SCIM 等独立包的源码和测试仍保留，主 SDK 的打包
 | `@app/auth-sdk/waffo` | Waffo Pancake 官方 SDK、一次性业务支付与 webhook 验签（Node.js 20+） |
 
 i18n 随安装包交付，须显式注册才生效；仅翻译认证 API 的错误消息，不翻译页面、邮件或用户内容。配置及示例见 [i18n 接入](./packages/app-sdk/README.md#认证错误多语言)。
+
+0.3.0 新增 `createSeeAPIModerationDetector`（文字、图片、视频 NSFW）与 `createKieGenerationProvider`（Market 图片、视频）。使用原生异步任务、私有素材与现有授权流程，供应商成功不等于可以交付。配置、联动与限制见 [SeeAPI / Kie.ai 接入](./docs/seeapi-kie-usage.md)；当前供应商实测未完成。
 
 API Key、Redis 存储和 MCP 均须宿主显式配置，安装不会自动开启认证方式、连接 Redis 或公开 MCP 工具。使用 Redis 时按需安装 `ioredis`；MCP 包含 OAuth Provider 依赖，不包含 MCP 协议服务端、工具实现或 CIMD 插件。配置及边界见 [程序化认证与共享存储](./packages/app-sdk/README.md#程序化认证与共享存储)。
 

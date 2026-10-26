@@ -146,6 +146,7 @@ export { generationClient } from "@app/auth-sdk/generation/client";
 export { createOpenAIGenerationProvider } from "@app/auth-sdk/generation/providers/openai";
 export { createGoogleGenerationProvider, createGoogleInteractionsGenerationProvider } from "@app/auth-sdk/generation/providers/google";
 export { createFalGenerationProvider } from "@app/auth-sdk/generation/providers/fal";
+export { createKieGenerationProvider, kieNanoBanana2Adapter, kieNanoBanana2Parameters, kieGrokTextToVideoAdapter, kieGrokImageToVideoAdapter } from "@app/auth-sdk/generation/providers/kie";
 `,
 	);
 	const generationEntry = await import(pathToFileURL(generationRuntime).href);
@@ -157,6 +158,7 @@ export { createFalGenerationProvider } from "@app/auth-sdk/generation/providers/
 		"createGoogleGenerationProvider",
 		"createGoogleInteractionsGenerationProvider",
 		"createFalGenerationProvider",
+		"createKieGenerationProvider",
 	])
 		assert.equal(
 			typeof generationEntry[name],
@@ -173,6 +175,10 @@ import { generationClient } from "@app/auth-sdk/generation/client";
 import { createOpenAIGenerationProvider, openAIImageParameters } from "@app/auth-sdk/generation/providers/openai";
 import { createGoogleGenerationProvider, googleVideoParameters } from "@app/auth-sdk/generation/providers/google";
 import { createFalGenerationProvider } from "@app/auth-sdk/generation/providers/fal";
+import { createKieGenerationProvider, kieNanoBanana2Adapter, kieNanoBanana2Parameters } from "@app/auth-sdk/generation/providers/kie";
+import type { KieModelAdapter } from "@app/auth-sdk/generation/providers/kie";
+const kieMapping: KieModelAdapter = kieNanoBanana2Adapter;
+const kie: GenerationProvider = createKieGenerationProvider({ apiKey: "consumer-test", downloadHosts: ["cdn.example"], models: { "nano-banana-2": kieMapping } });
 declare const options: GenerationOptions;
 const plugin = generation(options);
 const client = generationClient();
@@ -192,6 +198,7 @@ const result: ProviderResult = { status: "running", taskId: "consumer-test" };
 		"createModerationStore",
 		"createOpenAIModerationDetector",
 		"createTextRulesDetector",
+		"createSeeAPIModerationDetector",
 	])
 		assert.equal(
 			typeof entry[name],
@@ -210,6 +217,9 @@ const result: ProviderResult = { status: "running", taskId: "consumer-test" };
 		source,
 		`
 import { moderation, createModeration, createOpenAIModerationDetector, createTextRulesDetector } from "@app/auth-sdk/moderation";
+import { createSeeAPIModerationDetector } from "@app/auth-sdk/moderation";
+import type { ProviderModerationEvidence } from "@app/auth-sdk/moderation";
+const seeapi: ModerationDetector = createSeeAPIModerationDetector({ api_key: "consumer-test", base_url: "https://api.seeapi.com", version: "consumer-v1" });
 import { i18n } from "@app/auth-sdk/i18n";
 import type { I18nOptions } from "@app/auth-sdk/i18n";
 import { i18nClient } from "@app/auth-sdk/i18n/client";
@@ -301,6 +311,7 @@ test("packaged SDK includes generation, moderation, ticket, client and migration
 			"generation/providers/openai",
 			"generation/providers/google",
 			"generation/providers/fal",
+			"generation/providers/kie",
 			"moderation",
 			"tickets",
 			"tickets/client",

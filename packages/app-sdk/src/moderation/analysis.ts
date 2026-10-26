@@ -220,6 +220,10 @@ export async function analyze(
 				)
 			: prepared.policy.rules;
 	const result = await runChecks({
+		execution_key: await runtime.opaque(input.context.tenant_id, [
+			reservation.command.key,
+			reservation.command.data.fingerprint,
+		]),
 		items: input.items,
 		rules: rules.filter((rule) => rule.stages.includes(input.stage)),
 		detectors: runtime.options.detectors,

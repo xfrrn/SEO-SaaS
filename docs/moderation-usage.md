@@ -62,6 +62,8 @@ const sexualText: PolicyRule = {
 
 ## 检测器
 
+SDK 0.3.0 新增 `createSeeAPIModerationDetector`，支持 SeeAPI 的文字、图片 2.0 与供应商视频抽样帧审核。视频使用独立 `video.provider_sampled_frames` 范围，不满足宿主抽帧或音轨规则。幂等执行标识由正常 check/evaluate 自动生成；新增 `provider_evidence` 保存不含素材 URL 的原生参数/标签/抽样证据，旧记录无需迁移。配置、输入限制及与 Kie.ai 的联动见 [SeeAPI / Kie.ai 接入](./seeapi-kie-usage.md)。当前供应商实测未完成。
+
 `createOpenAIModerationDetector` 要求 `api_key`、完整 HTTPS `endpoint`、`model` 和 `resolveImage(asset_ref, signal)`。`endpoint` 来自受信服务端配置；通常为 `https://api.openai.com/v1/moderations`。支持 `omni-moderation-latest` 或固定的 `omni-moderation-2024-09-26`。`resolveImage` 将已经过所有权验证的私有引用转换为受控 HTTPS URL 或 `data:image/...`。不要把用户提交的任意 URL 直接交给它。
 
 宿主若提供 `resolveVideo`，可审核版本绑定的抽样帧；必须返回 `VideoInspectionPlan` 与 `VideoInspectionManifest`，包含采样率、首尾帧、场景采样声明、最大时长/帧数、实际帧列表和缺口。SDK 核验计划及采样覆盖，再检查每个必需帧。抽帧实现由宿主负责；音轨审核仍不支持，要求音轨时返回 missing。抽样检查不能声明完整逐帧覆盖。

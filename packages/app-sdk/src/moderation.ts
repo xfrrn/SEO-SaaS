@@ -17,6 +17,12 @@ export type {
 	ResolvedVideoInspection,
 } from "./moderation/detectors/openai";
 export { createOpenAIModerationDetector } from "./moderation/detectors/openai";
+export type {
+	SeeAPIImage,
+	SeeAPIModerationOptions,
+	SeeAPIVideo,
+} from "./moderation/detectors/seeapi";
+export { createSeeAPIModerationDetector } from "./moderation/detectors/seeapi";
 export { createTextRulesDetector } from "./moderation/detectors/text-rules";
 export type {
 	DeliveryRequest,

@@ -165,6 +165,7 @@ export interface Finding {
 	threshold: number | null;
 	rule_id: string | null;
 	reason_code: string;
+	provider_evidence?: ProviderModerationEvidence;
 	media_evidence?: {
 		video_plan: VideoInspectionPlan;
 		video_manifest: VideoInspectionManifest;
@@ -179,6 +180,7 @@ export interface DetectorFinding {
 	provider_model?: string;
 	provider_request_id?: string;
 	native_category?: string;
+	provider_evidence?: ProviderModerationEvidence;
 	media_evidence?: {
 		video_plan: VideoInspectionPlan;
 		video_manifest: VideoInspectionManifest;
@@ -195,10 +197,31 @@ export interface ModerationDetector {
 		inspection_scope: string;
 	}[];
 	check(input: {
+		/** Opaque, tenant-scoped command identity for idempotent provider requests. */
+		execution_key?: string;
 		items: ContentItem[];
 		requested_checks: RequestedCheck[];
 		signal: AbortSignal;
 	}): Promise<DetectorFinding[]>;
+}
+/** Provider reports remain distinct from host-extracted frame manifests. No source URLs. */
+export interface ProviderModerationEvidence {
+	parameters: Record<string, number | boolean>;
+	labels: string[];
+	video?: {
+		scope: "sampled_frames";
+		report_schema_version: number;
+		requested_frames: number;
+		checked_frames: number;
+		sampling_complete: boolean;
+		frames: {
+			frame_number: number;
+			timestamp_seconds: number;
+			nsfw_detected: boolean;
+			nsfw: string[];
+			special?: string[];
+		}[];
+	};
 }
 export interface CheckCoverage {
 	requested_check_id: string;

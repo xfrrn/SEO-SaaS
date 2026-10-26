@@ -6,7 +6,9 @@
 
 ## 安装
 
-生成能力通过独立 `packages/generation` 提供，统一入口为 `@app/auth-sdk/generation`。包含 OpenAI Images、Google 图片 / 视频、fal Queue、用户隔离任务、幂等提交与断点恢复。接入需宿主调度器、私有存储和数据库迁移；完整配置与安全边界见 [生成插件说明](../generation/README.md)。
+生成能力通过独立 `packages/generation` 提供，统一入口为 `@app/auth-sdk/generation`。包含 OpenAI Images、Google 图片 / 视频、fal Queue、Kie.ai Market、用户隔离任务、幂等提交与断点恢复。接入需宿主调度器、私有存储和数据库迁移；完整配置与安全边界见 [生成插件说明](../generation/README.md)。
+
+0.3.0 新增 SeeAPI 文本 / 图片 / 视频审核和 Kie.ai 图片 / 视频生成，配置及完整联动说明见 [服务商接入](../../docs/seeapi-kie-usage.md)。当前供应商实测未完成，不将 HTTP 测试边界视为生产验收。
 
 将仓库根目录执行 `pnpm pack:sdk` 生成的 `dist/auth-sdk.tgz` 复制到使用方项目：
 
@@ -37,9 +39,10 @@ pnpm add ./vendor/auth-sdk.tgz
 | `@app/auth-sdk/generation/providers/openai` | `createOpenAIGenerationProvider`、OpenAI 图片参数 schema |
 | `@app/auth-sdk/generation/providers/google` | `createGoogleInteractionsGenerationProvider` 新媒体协议、`createGoogleGenerationProvider` 原协议及参数 schema |
 | `@app/auth-sdk/generation/providers/fal` | `createFalGenerationProvider`、按模型配置的 fal Queue 适配 |
+| `@app/auth-sdk/generation/providers/kie` | `createKieGenerationProvider`、`KieModelAdapter`、Nano Banana 2 / Grok 参数与映射 |
 | `@app/auth-sdk/tickets` | `tickets` 工单插件、`SupportTicket` / `TicketEntry` / `TicketStatus` 类型 |
 | `@app/auth-sdk/tickets/client` | `ticketsClient` 用户工单与管理员处理接口 |
-| `@app/auth-sdk/moderation` | `moderation`、`createModeration`、检测器工厂、SQL 存储、审核类型和 schema |
+| `@app/auth-sdk/moderation` | `moderation`、`createModeration`、OpenAI / SeeAPI / 文本规则检测器、SQL 存储、审核类型和 schema |
 | `@app/auth-sdk/metrics` | `createMetricsHandler` 站点只读统计接口 |
 | `@app/auth-sdk/plugins` | 内置服务端插件 |
 | `@app/auth-sdk/client/plugins` | 内置客户端插件 |

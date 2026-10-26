@@ -5,6 +5,7 @@ import * as sdkBusinessClient from "@app/auth-sdk/business/client";
 import * as sdkClientPlugins from "@app/auth-sdk/client/plugins";
 import * as sdkCredits from "@app/auth-sdk/credits";
 import * as sdkCreditsClient from "@app/auth-sdk/credits/client";
+import * as sdkKie from "@app/auth-sdk/generation/providers/kie";
 import * as sdkI18n from "@app/auth-sdk/i18n";
 import * as sdkI18nClient from "@app/auth-sdk/i18n/client";
 import * as sdkI18nLocales from "@app/auth-sdk/i18n/locales";
@@ -25,6 +26,7 @@ import * as nativeBusiness from "@app/business";
 import * as nativeBusinessClient from "@app/business/client";
 import * as nativeCredits from "@app/credits";
 import * as nativeCreditsClient from "@app/credits/client";
+import * as nativeKie from "@app/generation/providers/kie";
 import * as nativePayPal from "@app/paypal";
 import * as nativeSubscription from "@app/subscription";
 import * as nativeSubscriptionClient from "@app/subscription/client";
@@ -50,6 +52,7 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 describe("SDK native compatibility", () => {
 	it("re-exports the original values from every entrypoint", () => {
 		for (const [sdk, native] of [
+			[sdkKie, nativeKie],
 			[sdkApiKey, nativeApiKey],
 			[sdkApiKeyClient, nativeApiKeyClient],
 			[sdkMcp, nativeMcp],

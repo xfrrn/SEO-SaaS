@@ -17,6 +17,11 @@
     "lint:package": "publint run --strict --pack false"
   },
   "exports": {
+    "./providers/kie": {
+      "dev-source": "./src/providers/kie.ts",
+      "types": "./dist/providers/kie.d.mts",
+      "default": "./dist/providers/kie.mjs"
+    },
     ".": {
       "dev-source": "./src/index.ts",
       "types": "./dist/index.d.mts",
