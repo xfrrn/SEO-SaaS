@@ -10,13 +10,25 @@ export interface CreditEntry {
 	idempotencyKey: string;
 	reason?: string | null | undefined;
 	/** Absent on ledger entries written before batch support. */
-	kind?: "grant" | "consume" | "expire" | "revoke" | null | undefined;
+	kind?:
+		| "grant"
+		| "consume"
+		| "expire"
+		| "revoke"
+		| "reserve"
+		| "settle"
+		| "release"
+		| null
+		| undefined;
 	/** Application-defined origin, for example purchase or membership. */
 	source?: string | null | undefined;
 	/** A grant is unavailable at and after this time. Omitted grants never expire. */
 	expiresAt?: Date | null | undefined;
 	/** Internal remaining-batch snapshot, committed atomically with the balance. */
 	batchState?: string | null | undefined;
+	/** Active reservations, committed in the same append-only row as the balance. */
+	holdState?: string | null | undefined;
+	reservationId?: string | null | undefined;
 	/** Internal original grant key for a recovery operation. */
 	revokedGrantKey?: string | null | undefined;
 	createdAt: Date;
@@ -25,7 +37,11 @@ export interface CreditEntry {
 /** Ledger details visible to an authorized customer, without internal request keys. */
 export type PublicCreditEntry = Omit<
 	CreditEntry,
-	"idempotencyKey" | "batchState" | "revokedGrantKey"
+	| "idempotencyKey"
+	| "batchState"
+	| "holdState"
+	| "reservationId"
+	| "revokedGrantKey"
 >;
 
 /** A trusted server operation, unique per account and idempotency key. */
@@ -46,6 +62,14 @@ export interface CreditGrantInput extends CreditMutationInput {
 export interface CreditRevokeInput {
 	referenceId: string;
 	grantKey: string;
+	idempotencyKey: string;
+	reason?: string | undefined;
+}
+
+/** Finalize exactly one permanent-credit reservation using a stable business key. */
+export interface CreditReservationInput {
+	referenceId: string;
+	reservationId: string;
 	idempotencyKey: string;
 	reason?: string | undefined;
 }

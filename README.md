@@ -58,7 +58,7 @@ Dashboard 通过 `PAYMENT_PROVIDER=stripe`、`paypal` 或 `waffo` 选择收款�
 pnpm pack:sdk
 ```
 
-当前 SDK 版本为 **0.3.0**，变更见 [版本说明](./docs/sdk-0.3.0.md)。产物为 **`dist/auth-sdk.tgz`**。其中包含本仓库构建的认证核心、Kysely/内存适配器、i18n、API Key、Redis 存储、MCP 及其 OAuth Provider 依赖，以及通用订阅、credits、business、Stripe 及 PayPal 包，保留你的本地修改。复制到使用方项目的 `vendor/` 后安装：
+当前 SDK 版本为 **0.4.0**，新增中台客户端、审核动作回执与原生积分冻结，见 [版本说明](./docs/sdk-0.4.0.md) 和 [中台接入](./docs/media-engine-usage.md)。产物为 **`dist/auth-sdk.tgz`**。其中包含本仓库构建的认证核心、Kysely/内存适配器、i18n、API Key、Redis 存储、MCP 及其 OAuth Provider 依赖，以及通用订阅、credits、business、Stripe 及 PayPal 包，保留你的本地修改。复制到使用方项目的 `vendor/` 后安装：
 
 ```bash
 pnpm add ./vendor/auth-sdk.tgz
@@ -376,7 +376,9 @@ const { entries, nextCursor } = await auth.api.listCreditsLedger({
 
 额度默认永久有效并累积；发放时可传 `source` 和绝对日期 `expiresAt`。消费先使用最早到期批次；读取余额、流水或写入时追加过期记录，过期积分不可消费。`revokeCreditsGrant` 按原发放 key 回收该批次剩余有效积分，不会扣其他批次；已消费或已过期部分返回 `unavailable`。历史无期限积分仍永久有效。套餐中的 `limits.monthlyCredits` 不会自动发放；本次不提供定时发放、年费按月赠送或新的支付渠道操作。
 
-流水只追加，余额随流水保存；SQL 唯一约束负责串行化同一账户的并发写入并避免重复记账。插件要求数据库迁移包含这些约束，支持本项目的 PostgreSQL/Kysely 接入，不支持内存适配器。不要直接修改或删除流水。额度操作不与外部业务任务共同提交；任务失败需要返还时，用新的稳定 key 调用 `grantCredits` 记录补偿。
+流水只追加，余额随流水保存；SQL 唯一约束负责串行化同一账户的并发写入并避免重复记账。插件要求数据库迁移包含这些约束，支持本项目的 PostgreSQL/Kysely 接入，不支持内存适配器。不要直接修改或删除流水。
+
+0.4.0 内的 `@app/credits` 0.2.0 支持 `createCreditsService(adapter).reserve/settle/release/reservation/account`。冻结只占用永久批次，普通消费和管理员回收不能使用已冻结部分；`balance()` 返回可用额度，`account()` 返回总额、冻结、可用。通过 `withCreditsTransaction(adapter, async (tx, credits) => ...)` 将预占、宿主请求和 outbox 同事务提交；不支持真实 SQL 事务的适配器拒绝冻结。跨服务仍无分布式事务。结算/释放使用原 reservationId，已经释放的冻结不能重开；现金退款与人工积分补偿仍为独立操作。完整示例及升级字段见 [中台接入](./docs/media-engine-usage.md)。
 
 ## PayPal.cn 接入
 

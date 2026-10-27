@@ -1,6 +1,6 @@
 {
   "name": "@app/auth-sdk",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "Application SDK for Better Auth authentication and optional payments",
   "type": "module",
@@ -17,6 +17,11 @@
     "lint:package": "publint run --strict --pack false"
   },
   "exports": {
+    "./media-engine": {
+      "dev-source": "./src/media-engine.ts",
+      "types": "./dist/media-engine.d.mts",
+      "default": "./dist/media-engine.mjs"
+    },
     "./generation/providers/kie": {
       "dev-source": "./src/generation/providers/kie.ts",
       "types": "./dist/generation/providers/kie.d.mts",

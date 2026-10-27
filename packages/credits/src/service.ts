@@ -1,11 +1,24 @@
-import type { DBAdapter } from "@better-auth/core/db/adapter";
+import type {
+	DBAdapter,
+	DBTransactionAdapter,
+} from "@better-auth/core/db/adapter";
 import type { BetterAuthOptions } from "better-auth";
 import { APIError } from "better-auth";
 import * as z from "zod";
+import {
+	creditTransactionAdapters,
+	heldFor,
+	heldTotal,
+	readHolds,
+	requireReservationTransaction,
+	reservePermanent,
+	takeAvailable,
+} from "./reservations";
 import type {
 	CreditEntry,
 	CreditGrantInput,
 	CreditMutationInput,
+	CreditReservationInput,
 	CreditRevokeInput,
 	PublicCreditEntry,
 } from "./types";
@@ -34,6 +47,9 @@ export const grantBody = mutationBody.extend({
 export const revokeBody = mutationBody.omit({ amount: true }).extend({
 	grantKey: identifier,
 });
+export const reservationBody = revokeBody
+	.omit({ grantKey: true })
+	.extend({ reservationId: identifier });
 const batchSchema = z.array(
 	z.object({
 		grantKey: identifier,
@@ -45,7 +61,10 @@ type Batch = z.infer<typeof batchSchema>[number];
 type Mutation =
 	| ({ kind: "grant" } & CreditGrantInput)
 	| ({ kind: "consume" } & CreditMutationInput)
-	| ({ kind: "revoke" } & CreditRevokeInput);
+	| ({ kind: "revoke" } & CreditRevokeInput)
+	| ({ kind: "reserve" } & CreditMutationInput)
+	| ({ kind: "settle" } & CreditReservationInput)
+	| ({ kind: "release" } & CreditReservationInput);
 
 function publicEntry(entry: CreditEntry): PublicCreditEntry {
 	return {
@@ -81,7 +100,7 @@ function take(batches: Batch[], amount: number) {
  * Unique account/sequence and account/key indexes are required; rows are immutable.
  */
 export function createCreditsService<Options extends BetterAuthOptions>(
-	adapter: DBAdapter<Options>,
+	adapter: DBTransactionAdapter<Options>,
 ) {
 	if (adapter.id === "memory") {
 		throw new Error(
@@ -154,10 +173,21 @@ export function createCreditsService<Options extends BetterAuthOptions>(
 		if (
 			kind !== input.kind ||
 			(entry.reason ?? null) !== (input.reason ?? null) ||
-			(input.kind === "revoke"
-				? entry.revokedGrantKey !== input.grantKey
-				: entry.amount !==
-					(input.kind === "grant" ? input.amount : -input.amount)) ||
+			(input.kind === "settle" || input.kind === "release"
+				? entry.reservationId !== input.reservationId
+				: input.kind === "revoke"
+					? entry.revokedGrantKey !== input.grantKey
+					: entry.amount !==
+						(input.kind === "reserve"
+							? 0
+							: input.kind === "grant"
+								? input.amount
+								: -input.amount)) ||
+			(input.kind === "reserve" &&
+				JSON.parse(entry.holdState || "[]").find(
+					(hold: { reservationId: string; amount: number }) =>
+						hold.reservationId === input.idempotencyKey,
+				)?.amount !== input.amount) ||
 			(input.kind === "grant" &&
 				((entry.source ?? null) !== (input.source ?? null) ||
 					(entry.expiresAt?.getTime() ?? null) !==
@@ -208,6 +238,7 @@ export function createCreditsService<Options extends BetterAuthOptions>(
 				if (existing) return duplicate(existing, input);
 			}
 			let batches = await state(previous);
+			let holds = readHolds(previous?.holdState, batches);
 			const now = new Date();
 			const expired = batches.reduce(
 				(sum, batch) =>
@@ -246,22 +277,49 @@ export function createCreditsService<Options extends BetterAuthOptions>(
 					remaining: amount,
 					expiresAt: input.expiresAt?.getTime() ?? null,
 				});
+			} else if (input?.kind === "reserve") {
+				holds.push(
+					reservePermanent(batches, holds, input.idempotencyKey, input.amount),
+				);
+				amount = 0;
+			} else if (input?.kind === "settle" || input?.kind === "release") {
+				const hold = holds.find(
+					(hold) => hold.reservationId === input.reservationId,
+				);
+				if (!hold)
+					throw new APIError("CONFLICT", {
+						code: "CREDITS_RESERVATION_FINALIZED_OR_MISSING",
+						message: "The reservation is missing or already finalized",
+					});
+				amount = input.kind === "settle" ? -hold.amount : 0;
+				if (input.kind === "settle")
+					for (const allocation of hold.batches) {
+						const batch = batches.find(
+							(batch) => batch.grantKey === allocation.grantKey,
+						)!;
+						batch.remaining -= allocation.amount;
+					}
+				holds = holds.filter(
+					(item) => item.reservationId !== input.reservationId,
+				);
 			} else if (input?.kind === "consume") {
-				if (input.amount > balance) {
+				if (input.amount > balance - heldTotal(holds)) {
 					throw new APIError("BAD_REQUEST", {
 						code: "INSUFFICIENT_CREDITS",
 						message: "Insufficient credits",
 					});
 				}
 				amount = -input.amount;
-				take(batches, input.amount);
+				takeAvailable(batches, holds, input.amount);
 			} else if (input?.kind === "revoke") {
 				await originalGrant(input);
-				amount = -(
-					batches.find((batch) => batch.grantKey === input.grantKey)
-						?.remaining ?? 0
+				const batch = batches.find(
+					(batch) => batch.grantKey === input.grantKey,
 				);
-				batches = batches.filter((batch) => batch.grantKey !== input.grantKey);
+				amount = -(batch
+					? batch.remaining - heldFor(holds, input.grantKey)
+					: 0);
+				if (batch) batch.remaining += amount;
 			} else throw new Error("Missing credit operation");
 
 			// Leading whitespace is rejected by all public identifiers, so internal
@@ -294,11 +352,21 @@ export function createCreditsService<Options extends BetterAuthOptions>(
 						batchState: JSON.stringify(
 							batches.filter((batch) => batch.remaining > 0),
 						),
+						holdState: JSON.stringify(holds),
+						reservationId:
+							!expired &&
+							(input?.kind === "settle" || input?.kind === "release")
+								? input.reservationId
+								: !expired && input?.kind === "reserve"
+									? input.idempotencyKey
+									: undefined,
 						createdAt: now,
 					},
 				});
 				if (!expired) return { entry, applied: true };
 			} catch (error) {
+				// PostgreSQL aborts the transaction on a unique conflict; the host retries the entire unit.
+				if (creditTransactionAdapters.has(adapter)) throw error;
 				if (!expired) {
 					const committed = await findKey(referenceId, key);
 					if (committed) return duplicate(committed, input!);
@@ -321,12 +389,67 @@ export function createCreditsService<Options extends BetterAuthOptions>(
 	}
 
 	async function mutate(input: Mutation) {
+		if (
+			input.kind === "reserve" ||
+			input.kind === "settle" ||
+			input.kind === "release"
+		)
+			requireReservationTransaction(adapter);
 		const result = await execute(input.referenceId, input);
 		if (!result.entry) throw new Error("Missing credit ledger entry");
 		return { entry: result.entry, applied: result.applied };
 	}
 
 	return {
+		/** Reserve permanent credits. Use the business request ID as idempotencyKey. */
+		reserve: async (input: CreditMutationInput) =>
+			mutate({ ...mutationBody.parse(input), kind: "reserve" }),
+		/** Read a reservation's immutable amount and latest finalization for this account. */
+		async reservation(referenceId: string, reservationId: string) {
+			identifier.parse(referenceId);
+			identifier.parse(reservationId);
+			const original = await findKey(referenceId, reservationId);
+			if (!original || original.kind !== "reserve") return null;
+			const hold = readHolds(original.holdState, await state(original)).find(
+				(item) => item.reservationId === reservationId,
+			);
+			if (!hold)
+				throw new Error(
+					"Credit reservation is missing its original allocation",
+				);
+			const [latest] = await adapter.findMany<CreditEntry>({
+				model: "creditEntry",
+				where: [
+					{ field: "referenceId", value: referenceId },
+					{ field: "reservationId", value: reservationId },
+				],
+				sortBy: { field: "sequence", direction: "desc" },
+				limit: 1,
+			});
+			if (
+				!latest ||
+				!["reserve", "settle", "release"].includes(latest.kind ?? "")
+			)
+				throw new Error("Credit reservation has an invalid finalization");
+			return {
+				referenceId,
+				reservationId,
+				amount: hold.amount,
+				status:
+					latest.kind === "settle"
+						? ("settled" as const)
+						: latest.kind === "release"
+							? ("released" as const)
+							: ("held" as const),
+				entry: publicEntry(latest),
+			};
+		},
+		/** Settle the original fixed amount once; cannot reverse an earlier release. */
+		settle: async (input: CreditReservationInput) =>
+			mutate({ ...reservationBody.parse(input), kind: "settle" }),
+		/** Release a reservation once, without creating a refund or changing total balance. */
+		release: async (input: CreditReservationInput) =>
+			mutate({ ...reservationBody.parse(input), kind: "release" }),
 		/** Grant a batch once. Historical expiry dates are accepted for delayed payment events. */
 		grant: async (input: CreditGrantInput) =>
 			mutate({ ...grantBody.parse(input), kind: "grant" }),
@@ -347,7 +470,25 @@ export function createCreditsService<Options extends BetterAuthOptions>(
 		/** Return spendable balance, recording any newly expired credits first. */
 		async balance(referenceId: string) {
 			const { entry } = await execute(identifier.parse(referenceId));
-			return { referenceId, balance: entry?.balance ?? 0 };
+			return {
+				referenceId,
+				balance:
+					(entry?.balance ?? 0) -
+					heldTotal(readHolds(entry?.holdState, await state(entry))),
+			};
+		},
+		/** Return total, reserved and spendable credits from the same ledger snapshot. */
+		async account(referenceId: string) {
+			const { entry } = await execute(identifier.parse(referenceId));
+			const reserved = heldTotal(
+				readHolds(entry?.holdState, await state(entry)),
+			);
+			return {
+				referenceId,
+				total: entry?.balance ?? 0,
+				reserved,
+				available: (entry?.balance ?? 0) - reserved,
+			};
 		},
 		/** Read immutable public ledger entries with cursor pagination. */
 		async ledger(input: {
@@ -390,4 +531,26 @@ export function createCreditsService<Options extends BetterAuthOptions>(
 			};
 		},
 	};
+}
+
+/** Share one verified SQL transaction between credits and the host's business/outbox writes. */
+export async function withCreditsTransaction<
+	Options extends BetterAuthOptions,
+	T,
+>(
+	adapter: DBAdapter<Options>,
+	work: (
+		tx: DBTransactionAdapter<Options>,
+		credits: ReturnType<typeof createCreditsService<Options>>,
+	) => Promise<T>,
+): Promise<T> {
+	requireReservationTransaction(adapter);
+	return adapter.transaction(async (tx) => {
+		creditTransactionAdapters.add(tx);
+		try {
+			return await work(tx, createCreditsService(tx));
+		} finally {
+			creditTransactionAdapters.delete(tx);
+		}
+	});
 }

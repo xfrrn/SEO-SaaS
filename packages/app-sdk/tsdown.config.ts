@@ -4,6 +4,7 @@ export default defineConfig({
 	dts: { build: true, incremental: true },
 	format: ["esm"],
 	entry: [
+		"./src/media-engine.ts",
 		"./src/generation/providers/kie.ts",
 		"./src/api-key.ts",
 		"./src/api-key/client.ts",

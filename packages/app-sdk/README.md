@@ -2,6 +2,8 @@
 
 `@app/auth-sdk` 统一导出 Better Auth 服务端、客户端插件、React、Next.js、通用订阅、credits、组合业务、Stripe 和 PayPal 功能，保持各功能包的参数、返回值和类型推导。
 
+0.4.0 新增服务端 `@app/auth-sdk/media-engine` 客户端与验签、审核动作应用/回执，原生 `@app/credits` 0.2.0 增加冻结、结算、释放与真实宿主事务桥接。新网站采用中台接入，旧本地执行入口保留兼容；见 [使用合同](../../docs/media-engine-usage.md) 和 [版本说明](../../docs/sdk-0.4.0.md)。
+
 内容审核入口 `@app/auth-sdk/moderation` 已实现服务端分层检测、工作流授权、回流、复核、声明及脱敏导出。完整调用合同、宿主适配器与接入限制见 [使用说明](../../docs/moderation-usage.md)；设计目标及生产验收边界见 [设计文档](../../docs/moderation-design.md)。
 
 ## 安装
@@ -890,6 +892,8 @@ async function handlePayPalWebhook(request: Request) {
 不传 `expiresAt` 的积分默认永久累积；到期批次在 `now >= expiresAt` 时不可消费。余额/流水查询或新操作会先结算过期批次并追加 `expire` 流水，因此查询可能产生这类系统记账。消费优先扣最早到期批次，同到期时间优先较早发放批次，永久积分最后消费。不会因为会员到期而清空整个账户，也不会清掉另一笔充值。
 
 升级须迁移新增批次字段并保留原唯一约束；旧流水按永久积分恢复批次，不回写历史行。业务组合可将 `createCreditsService(transactionAdapter)` 与会员、订单、审计写入同一事务；单独调用积分 API 与外部任务或支付平台之间没有跨系统事务。插件不创建定时发放任务，套餐 `limits` 也不自动发放积分。示例见[根目录说明](../../README.md#credits-额度)。
+
+0.4.0 的冻结服务使用同一追加账本的 `holdState` / `reservationId` 字段，不另建余额表。`reserve` 以幂等键作为 reservationId，只冻结永久积分；`settle` / `release` 采用稳定终结键，终结只能选择一次。`reservation()` 查询原冻结，`account()` 返回 total/reserved/available，`balance()` 与浏览器 balance 返回 available。将业务请求和投递命令一起创建时使用 `withCreditsTransaction(adapter, (tx, credits) => ...)`；PostgreSQL 唯一冲突需以原键重试整个事务。已有发放、到期与退款接口保持，普通消费及批次回收尊重冻结分配。
 
 ## 组合业务与后台接口
 

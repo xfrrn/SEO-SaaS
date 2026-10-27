@@ -84,6 +84,9 @@ function CreditAccount({ user }: { user: SelectedUser }) {
 		consume: "消费",
 		expire: "到期",
 		revoke: "回收",
+		reserve: "冻结",
+		settle: "生成结算",
+		release: "解除冻结",
 	} as const;
 	return (
 		<>

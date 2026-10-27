@@ -2,11 +2,16 @@
 
 This is the Better Auth repository - a comprehensive authentication framework for TypeScript, designed to be runtime and framework-agnostic.
 
+## Approved media platform migration target
+
+The user approved implementing the [cross-repository media migration plan](<../AI Media Engine/docs/media-platform-migration-plan.md>) on 2026-10-27: centralize generation and moderation execution in AI Media Engine and retain authentication, payments, credits, and a thin service client here. Follow its actual handoff status and verification evidence. Inventory consumers and preserve current generation/moderation exports until the migration and retirement checks pass; do not start a second executor in aimeme or remove capabilities merely because aimeme has not enabled them. Live paid calls and production deployment remain separately authorized actions.
+
 ## Project Structure
 
 - `packages/better-auth` - Main authentication library
 - `packages/core` - Shared core types and utilities
 - `packages/app-sdk` - Application SDK entry points, re-exporting authentication, subscription, credits, and payment packages
+- SDK 0.4.0 adds server-only `@app/auth-sdk/media-engine`, signed notifications/action receipts, expiring signing-key overlap and native credits 0.2.0 reservations/host SQL transactions. New website consumers use the remote client; Engine reuses the fixed 0.4.0 moderation core, including the counter-window action-obligation fix. See `docs/media-engine-usage.md` and `docs/sdk-0.4.0.md`.
 - `packages/i18n` - Authentication API error translations; bundled with the SDK through `@app/auth-sdk/i18n`, `/i18n/client`, and `/i18n/locales`; opt-in registration, no page or email translation
 - `packages/api-key`, `packages/redis-storage`, `packages/mcp` - Native programmatic authentication, Redis secondary storage, and MCP authorization; SDK 0.2.0 bundles them with the MCP OAuth Provider dependency. Host opt-in, database migrations and route authorization remain required; ioredis is an optional SDK peer
 - `packages/business/src/analytics` - Verified local payment totals, UTC day/month trends, registration cohort conversion and per-user lifetime spending; currencies stay separate

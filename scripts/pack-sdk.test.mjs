@@ -55,6 +55,17 @@ async function linkInstalledDependencies(root, stage, manifest) {
 }
 
 async function assertPluginConsumers(stage) {
+	const mediaRuntime = join(stage, "media-consumer.mjs");
+	await writeFile(
+		mediaRuntime,
+		'export { createMediaEngineClient, verifyMediaEngineEvent, verifyMediaEngineNotification, applyMediaEngineAction } from "@app/auth-sdk/media-engine"; export { withCreditsTransaction } from "@app/auth-sdk/credits";',
+	);
+	const mediaEntry = await import(pathToFileURL(mediaRuntime).href);
+	assert.equal(typeof mediaEntry.createMediaEngineClient, "function");
+	assert.equal(typeof mediaEntry.verifyMediaEngineEvent, "function");
+	assert.equal(typeof mediaEntry.verifyMediaEngineNotification, "function");
+	assert.equal(typeof mediaEntry.applyMediaEngineAction, "function");
+	assert.equal(typeof mediaEntry.withCreditsTransaction, "function");
 	const programmaticRuntime = join(stage, "programmatic-consumer.mjs");
 	await writeFile(
 		programmaticRuntime,

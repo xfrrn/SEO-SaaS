@@ -49,6 +49,8 @@ export function createCreditsSchema() {
 				source: { type: "string", required: false },
 				expiresAt: { type: "date", required: false },
 				batchState: { type: "string", required: false, returned: false },
+				holdState: { type: "string", required: false, returned: false },
+				reservationId: { type: "string", required: false, returned: false },
 				revokedGrantKey: { type: "string", required: false, returned: false },
 				createdAt: { type: "date", required: true },
 			},

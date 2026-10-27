@@ -19,11 +19,12 @@ import {
 	revokeBody,
 } from "./service";
 
-export { createCreditsService } from "./service";
+export { createCreditsService, withCreditsTransaction } from "./service";
 export type {
 	CreditEntry,
 	CreditGrantInput,
 	CreditMutationInput,
+	CreditReservationInput,
 	CreditRevokeInput,
 	PublicCreditEntry,
 } from "./types";

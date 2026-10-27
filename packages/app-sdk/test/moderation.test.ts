@@ -23,6 +23,8 @@ describe("moderation workflow", () => {
 		false,
 		true,
 	])("requires every matching abuse action receipt and its valid expiry, reversed=%s", async (reverse) => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		vi.setSystemTime(new Date("2026-01-01T00:00:59.000Z"));
 		const abuse_rules: AbuseRule[] = ["challenge", "limit"].map((effect) => ({
 			id: `abuse-${effect}`,
 			metric: "requests",
@@ -43,6 +45,7 @@ describe("moderation workflow", () => {
 		});
 		let result = await sdk.evaluate(evaluation());
 		expect(result.decision.decision).toBe("review");
+		vi.setSystemTime(new Date("2026-01-01T00:01:00.000Z"));
 		async function updateAction(
 			type: "challenge" | "limit",
 			status: EnforcementAction["status"],

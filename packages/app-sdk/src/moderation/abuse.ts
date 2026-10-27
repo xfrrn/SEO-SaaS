@@ -4,6 +4,7 @@ import type {
 	AbuseFinding,
 	CheckReport,
 	EvaluationRequest,
+	EnforcementAction,
 	ModerationTransaction,
 	ResolvedAbuseContext,
 } from "./types";
@@ -84,6 +85,15 @@ export async function assessAbuse(
 					data: { count },
 				});
 		}
+		// A new counter window cannot erase an action already required by this attempt/policy.
+		const priorAction =
+			rule.mode === "enforce" && rule.effect !== "review"
+				? await tx.get<EnforcementAction>(
+						"action",
+						`action:${await runtime.opaque(input.context.tenant_id, [input.attempt_id, prepared.policy.version, rule.id, rule.effect])}`,
+					)
+				: null;
+		const required = count >= rule.threshold || priorAction !== null;
 		findings.push({
 			rule_id: rule.id,
 			subject_ref,
@@ -92,18 +102,15 @@ export async function assessAbuse(
 			coverage: value ? "checked" : "missing",
 			observed_count: value ? count : null,
 			threshold: rule.threshold,
-			effect:
-				value && count < rule.threshold
-					? "none"
-					: value
-						? rule.effect
-						: "review",
+			effect: value && !required ? "none" : value ? rule.effect : "review",
 			evidence_event_ids: [],
 			mode: rule.mode,
 			reason_code: value
 				? count >= rule.threshold
 					? "ABUSE_THRESHOLD"
-					: "ABUSE_CLEAR"
+					: priorAction
+						? "ABUSE_ACTION_REQUIRED"
+						: "ABUSE_CLEAR"
 				: "ABUSE_SIGNAL_MISSING",
 		});
 	}
