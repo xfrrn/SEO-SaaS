@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { AuthQueryAtom } from "../../../client";
 import { createAuthClient } from "../../../client";
 import { getTestInstance } from "../../../test-utils/test-instance";
+import { createAccessControl } from "../../access";
+import { adminAc, defaultStatements, memberAc, ownerAc } from "../access";
 import { organizationClient } from "../client";
 import { ORGANIZATION_ERROR_CODES } from "../error-codes";
 import { organization } from "../organization";
@@ -648,6 +650,85 @@ describe("updateMemberRole", async () => {
 			);
 			expect(updated.error?.status).toBe(400);
 		}
+	});
+});
+
+describe("updateMemberRole privilege escalation", async () => {
+	const ac = createAccessControl(defaultStatements);
+	const roles = {
+		owner: ac.newRole({ ...ownerAc.statements }),
+		admin: ac.newRole({ ...adminAc.statements }),
+		member: ac.newRole({ ...memberAc.statements }),
+		manager: ac.newRole({ member: ["update"] }),
+	};
+	const { auth, signInWithTestUser, customFetchImpl } = await getTestInstance({
+		plugins: [organization({ ac, roles })],
+	});
+
+	it("should not let a member with member:update promote a member to admin", async () => {
+		const { headers } = await signInWithTestUser();
+		const client = createAuthClient({
+			plugins: [organizationClient()],
+			baseURL: "http://localhost:3000/api/auth",
+			fetchOptions: { customFetchImpl },
+		});
+
+		const org = await client.organization.create({
+			name: "escalation-custom",
+			slug: "escalation-custom",
+			fetchOptions: { headers },
+		});
+
+		const managerUser = await auth.api.signUpEmail({
+			body: {
+				email: "manager-escalation@test.com",
+				name: "manager",
+				password: "password",
+			},
+		});
+		await auth.api.addMember({
+			body: {
+				organizationId: org.data?.id as string,
+				userId: managerUser.user.id,
+				role: "manager",
+			},
+		});
+
+		const victimUser = await auth.api.signUpEmail({
+			body: {
+				email: "victim-escalation@test.com",
+				name: "victim",
+				password: "password",
+			},
+		});
+		const victimMember = await auth.api.addMember({
+			body: {
+				organizationId: org.data?.id as string,
+				userId: victimUser.user.id,
+				role: "member",
+			},
+		});
+
+		const managerHeaders = new Headers({
+			authorization: `Bearer ${managerUser.token}`,
+		});
+		const escalated = await client.organization.updateMemberRole(
+			{
+				organizationId: org.data?.id as string,
+				memberId: victimMember?.id as string,
+				role: "admin",
+			},
+			{ headers: managerHeaders },
+		);
+
+		expect(escalated.error?.status).toBe(403);
+
+		const ctx = await auth.$context;
+		const persisted = await ctx.adapter.findOne<{ role: string }>({
+			model: "member",
+			where: [{ field: "id", value: victimMember?.id as string }],
+		});
+		expect(persisted?.role).toBe("member");
 	});
 });
 

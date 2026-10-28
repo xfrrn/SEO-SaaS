@@ -715,6 +715,63 @@ export const updateMemberRole = <O extends OrganizationOptions>(option: O) =>
 				}
 			}
 
+			// A member may not assign a role whose permissions they do not hold,
+			// mirroring createOrgRole/updateOrgRole's "no privilege amplification" rule.
+			for (const roleName of roleToSet) {
+				const staticRole =
+					ctx.context.orgOptions.roles?.[roleName] ??
+					defaultRoles[roleName as keyof typeof defaultRoles];
+				let requiredPermissions: Record<string, string[]>;
+				if (staticRole) {
+					requiredPermissions = {
+						...(
+							staticRole as unknown as {
+								statements: Record<string, string[]>;
+							}
+						).statements,
+					};
+				} else {
+					const foundRole = await ctx.context.adapter.findOne<{
+						permission: string;
+					}>({
+						model: "organizationRole",
+						where: [
+							{ field: "organizationId", value: organizationId },
+							{ field: "role", value: roleName },
+						],
+					});
+					if (!foundRole) continue;
+					try {
+						requiredPermissions = JSON.parse(foundRole.permission) as Record<
+							string,
+							string[]
+						>;
+					} catch {
+						continue;
+					}
+				}
+				for (const [resource, actions] of Object.entries(requiredPermissions)) {
+					for (const action of actions) {
+						const allowed = await hasPermission(
+							{
+								role: member.role,
+								options: ctx.context.orgOptions,
+								permissions: { [resource]: [action] },
+								allowCreatorAllPermissions: true,
+								organizationId,
+							},
+							ctx,
+						);
+						if (!allowed) {
+							throw APIError.from(
+								"FORBIDDEN",
+								ORGANIZATION_ERROR_CODES.YOU_ARE_NOT_ALLOWED_TO_UPDATE_THIS_MEMBER,
+							);
+						}
+					}
+				}
+			}
+
 			const organization = await adapter.findOrganizationById(organizationId);
 			if (!organization) {
 				throw APIError.from(
