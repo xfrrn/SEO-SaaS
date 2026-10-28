@@ -210,6 +210,16 @@ export function apiKey(
 							expectedConfigId: config.configId,
 						});
 
+						// A permission-scoped key must not be promoted to a full user
+						// session: its permissions are never evaluated on this path.
+						if (apiKey.permissions) {
+							throw APIError.from("FORBIDDEN", {
+								code: "API_KEY_PERMISSION_SCOPE_NOT_ALLOWED",
+								message:
+									"A permission-scoped API key cannot be used as a session",
+							});
+						}
+
 						const cleanupTask = deleteAllExpiredApiKeys(ctx.context).catch(
 							(err) => {
 								ctx.context.logger.error(
@@ -236,6 +246,15 @@ export function apiKey(
 						if (!user) {
 							const msg = API_KEY_ERROR_CODES.INVALID_REFERENCE_ID_FROM_API_KEY;
 							throw APIError.from("UNAUTHORIZED", msg);
+						}
+
+						// A banned account's existing API keys must not keep working
+						// after the admin plugin revokes their sessions.
+						if ((user as { banned?: boolean }).banned) {
+							throw APIError.from("FORBIDDEN", {
+								code: "USER_BANNED",
+								message: "Account is banned",
+							});
 						}
 
 						const session = {
