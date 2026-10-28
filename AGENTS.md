@@ -29,6 +29,8 @@ The user approved implementing the [cross-repository media migration plan](<../A
 - `scripts/` - SDK packaging and packaging tests
 - `README.md` and `packages/app-sdk/README.md` - SDK usage documentation
 
+SDK 0.5.1 adds optional Engine asset retention metadata and distinct expired-file errors; deletion remains in Engine. The fixed 0.4.0 moderation runtime is unchanged. See docs/media-engine-usage.md.
+
 ## Commands
 
 - ALWAYS use `pnpm` (never npm, yarn, or bun)

@@ -2,8 +2,78 @@ import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
 	createMediaEngineClient,
+	mediaAssetSchema,
 	verifyMediaEngineEvent,
 } from "../src/media-engine";
+
+describe("media retention", () => {
+	const asset = {
+		id: "asset-retained",
+		owner_scope: "user",
+		content_revision: "revision",
+		revision: 1,
+		kind: "video",
+		mime_type: "video/mp4",
+		size_bytes: 10,
+		status: "deleted",
+		purpose: "output",
+		inspection_status: "passed",
+		moderation_status: "allow",
+		media_info: {},
+		metadata: {},
+		created_at: "2026-10-28T00:00:00Z",
+	};
+	const retention = {
+		category: "normal",
+		reason: "",
+		preserved: false,
+		protected: false,
+		dependent: false,
+		review_overdue: false,
+		deleted_at: "2026-10-28T12:00:00+08:00",
+		deletion_reason: "expired",
+	};
+	it("preserves expiry/tombstones while remaining compatible with old Engine responses", async () => {
+		expect(mediaAssetSchema.parse(asset).retention).toBeUndefined();
+		const client = createMediaEngineClient({
+			base_url: "https://engine.example",
+			api_key: "key",
+			fetch: async () =>
+				Response.json({
+					...asset,
+					expires_at: "2026-10-28T00:00:00Z",
+					retention,
+				}),
+		});
+		expect(
+			(await client.asset({ user_id: "user-1" }, asset.id)).retention,
+		).toEqual(retention);
+		expect(
+			mediaAssetSchema.safeParse({
+				...asset,
+				retention: { ...retention, preserved: "false" },
+			}).success,
+		).toBe(false);
+	});
+	it("returns an expired download as a distinct 410 without retrying or changing generation outcomes", async () => {
+		let calls = 0;
+		const client = createMediaEngineClient({
+			base_url: "https://engine.example",
+			api_key: "key",
+			fetch: async () => {
+				calls++;
+				return Response.json(
+					{ error: { code: "asset_expired", message: "expired" } },
+					{ status: 410 },
+				);
+			},
+		});
+		await expect(
+			client.assetURL({ user_id: "user-1" }, asset.id),
+		).rejects.toMatchObject({ code: "asset_expired", status: 410 });
+		expect(calls).toBe(1);
+	});
+});
 
 const job = {
 	id: "gen_1",

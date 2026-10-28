@@ -1,6 +1,6 @@
 {
   "name": "@app/auth-sdk",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "private": true,
   "description": "Application SDK for Better Auth authentication and optional payments",
   "type": "module",

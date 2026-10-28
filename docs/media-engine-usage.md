@@ -50,3 +50,14 @@ Engine identifies moderation pending, review, error and blocking with separate `
 The 2026-10-28 compatibility regression covers skipped media and these task outcomes. Runtime exports and fixed 0.4.0 archives are unchanged; no consumer package refresh is required. Engine and aimeme own the policy switches, customer-state projection and cross-process tests. The complete state matrix is maintained in Engine's `docs/generation-outcomes.md`.
 
 Verification: `pnpm exec vitest run packages/app-sdk/test/media-engine.test.ts packages/app-sdk/test/moderation.test.ts packages/credits/test` passed 54 tests in 5 files; `pnpm exec tsc --project packages/app-sdk/tsconfig.test.json --noEmit` and the changed-file Biome check passed. No live moderation call or package release was performed.
+
+
+## 文件保留与过期（SDK 0.5.1）
+
+`MediaAsset` 保留现有 `expires_at`，新增可选 `retention`：category、reason、preserved、protected、dependent、review_overdue、deleted_at、deletion_reason。旧 Engine 响应可省略该对象；字段存在时严格校验布尔值与日期，不把字符串 false 当成关闭。retention.category 为 normal/blocked/temporary/staging/invalid。文件到期与短期签名失效不同；下载接口返回 HTTP 410 / asset_expired 时，重新申请签名不能恢复文件。
+
+清理只由 Engine 执行；SDK 不增加对象存储凭据、定时删除器或另一套保留策略。读取元数据仍可得到已删除文件的摘要，`assets(context,{status:'deleted'})` 查询删除记录，retention=expired/protected/preserved/overdue 可筛选生命周期。任务/素材关系与历史积分结算不因文件清理改写，禁止将文件过期作为新生成失败、退款或重新扣费。网站不持久化临时下载地址。
+
+Engine 的固定 0.4.0 审核运行包保持不变；0.5.1 是消费网站客户端的兼容扩展。迁移数据库、配置保留周期、首次启用与实际 R2 验证属于 Engine 的发布流程，本 SDK 更新不代表已启用自动清理或完成生产部署。
+
+本次验证：SDK 全量 802 项（含独立 PostgreSQL API Key 用例）、媒体客户端 9 项通过，构建与固定分发包生成通过。第一次全量因 API Key 套件使用默认 PostgreSQL 连接失败；显式指定隔离 BETTER_AUTH_TEST_POSTGRES_URL 后全量重跑通过，未修改认证实现或降低断言。未调用真实生成、审核或存储服务，未部署。

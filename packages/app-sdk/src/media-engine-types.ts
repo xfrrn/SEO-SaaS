@@ -44,6 +44,24 @@ export const mediaAssetSchema = z.object({
 	metadata: z.record(z.string(), z.unknown()),
 	created_at: z.string(),
 	expires_at: z.string().nullable().optional(),
+	retention: z
+		.object({
+			category: z.enum([
+				"normal",
+				"blocked",
+				"temporary",
+				"staging",
+				"invalid",
+			]),
+			reason: z.string(),
+			preserved: z.boolean(),
+			protected: z.boolean(),
+			dependent: z.boolean(),
+			review_overdue: z.boolean(),
+			deleted_at: z.iso.datetime({ offset: true }).nullable(),
+			deletion_reason: z.string(),
+		})
+		.optional(),
 });
 export const mediaRelationSchema = z.object({
 	asset_id: z.string().min(1),
