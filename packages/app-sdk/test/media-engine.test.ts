@@ -50,6 +50,59 @@ function signed(
 	};
 }
 describe("media engine server client", () => {
+	it("preserves unreviewed media and separate review, failure and reconciliation outcomes", async () => {
+		const asset = {
+			id: "asset_1",
+			external_user_id: "user-1",
+			owner_scope: "user",
+			kind: "image",
+			mime_type: "image/png",
+			size_bytes: 128,
+			status: "ready",
+			purpose: "input",
+			content_revision: "content-1",
+			revision: 1,
+			inspection_status: "passed",
+			moderation_status: "skipped",
+			created_at: "2026-10-28T00:00:00Z",
+			media_info: {},
+			metadata: {},
+		};
+		let response: unknown = asset;
+		const client = createMediaEngineClient({
+			base_url: "https://engine.fixture",
+			api_key: "isolated-key",
+			fetch: async () => Response.json(response),
+		});
+		expect(
+			(await client.asset({ user_id: "user-1" }, "asset_1")).moderation_status,
+		).toBe("skipped");
+		for (const outcome of [
+			{
+				status: "running",
+				delivery_status: "review",
+				resolution: "pending",
+				reason_code: "input_moderation_error",
+			},
+			{
+				status: "failed",
+				delivery_status: "blocked",
+				resolution: "confirmed_no_delivery",
+				reason_code: "output_moderation_blocked",
+			},
+			{
+				status: "reconciling",
+				delivery_status: "pending",
+				resolution: "needs_reconciliation",
+				reason_code: "submission_unknown",
+			},
+		]) {
+			response = { ...job, ...outcome };
+			const result = await client.generation({ user_id: "user-1" }, job.id);
+			expect(result).toMatchObject(outcome);
+		}
+	});
+
 	it("accepts both signing keys during an explicit overlap and rejects the expired old key", async () => {
 		const original = signed();
 		const current = "new-application-signing-secret-1234567890";

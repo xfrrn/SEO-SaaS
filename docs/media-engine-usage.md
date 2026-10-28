@@ -38,3 +38,15 @@ SDK 0.4.0 bundles native credits 0.2.0. Before enabling holds, add `creditEntry.
 Engine reuses the 0.4.0 moderation core through its own fixed package, including the counter-window action-receipt fix. New website code uses this remote client; do not register the legacy generation/moderation executors alongside it. Existing legacy exports and non-migrated capabilities remain supported until consumers and in-flight work are accounted for. Historical 0.3.0 archives remain identifiable and are not overwritten.
 
 0.4.0 adds transport/ledger/action and packaging tests; the Engine/aimeme isolated real-process chain is also verified. Real KIE, SeeAPI, R2, public callback delivery and production deployment still require separate acceptance.
+
+## Optional provider-independent moderation and outcome compatibility
+
+Engine now chooses its detector explicitly and configures moderation per website. The SDK client holds no detector credentials and has no SeeAPI dependency. Existing SDK 0.4.0 can carry `moderation_status=skipped` (explicitly disabled independent moderation), review/block states and reason codes without changing its runtime package.
+
+Always interpret `status`, `delivery_status` and `resolution` together. `succeeded + available + deliverable` with a matching output-role asset permits one settlement. `failed/cancelled + blocked/unavailable + confirmed_no_delivery` permits one release. Pending moderation, technical moderation errors, human review and unknown provider acceptance keep the original reservation. A generation provider success response alone does not settle customer credits. Query the current authoritative task after a signed event and reject contradictory combinations; transport schema validation does not implement host business settlement.
+
+Engine identifies moderation pending, review, error and blocking with separate `input_moderation_*` / `output_moderation_*` reasons. An asset marked skipped can be available when the host administrator has disabled independent moderation; it never means that detection passed. Always obtain a fresh authorized read link rather than deriving permission from that label.
+
+The 2026-10-28 compatibility regression covers skipped media and these task outcomes. Runtime exports and fixed 0.4.0 archives are unchanged; no consumer package refresh is required. Engine and aimeme own the policy switches, customer-state projection and cross-process tests. The complete state matrix is maintained in Engine's `docs/generation-outcomes.md`.
+
+Verification: `pnpm exec vitest run packages/app-sdk/test/media-engine.test.ts packages/app-sdk/test/moderation.test.ts packages/credits/test` passed 54 tests in 5 files; `pnpm exec tsc --project packages/app-sdk/tsconfig.test.json --noEmit` and the changed-file Biome check passed. No live moderation call or package release was performed.
