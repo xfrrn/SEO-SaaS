@@ -14,6 +14,12 @@ import type { MonitorSnapshot } from "./monitor";
 import { createMonitorService, monitorContext } from "./monitor";
 import type { BusinessJSON, BusinessOptions, BusinessOrder } from "./types";
 import {
+	purchasePolicy,
+	purchaseQuote,
+	restrictedPurchase,
+	purchaseConflict,
+} from "./purchase-policy";
+import {
 	canonicalJSON,
 	compositeKey,
 	creditAdjustment,
@@ -141,6 +147,11 @@ export function createBusinessService<Options extends BetterAuthOptions>(
 				(await createProductService(db).getLatest(product.key))?.id !==
 					product.id
 			) {
+				if (body.quoteVersion !== undefined)
+					throw new APIError("CONFLICT", {
+						message: "Purchase quote changed; review the current price",
+						code: "PURCHASE_QUOTE_CHANGED",
+					});
 				throw new APIError("BAD_REQUEST", {
 					message: "Product is not currently published",
 				});
@@ -148,6 +159,28 @@ export function createBusinessService<Options extends BetterAuthOptions>(
 			if (product.amount <= 0)
 				throw new APIError("BAD_REQUEST", {
 					message: "Paid checkout requires a positive amount",
+				});
+			const quote = await purchaseQuote(db, referenceId, product);
+			if (!quote.canPurchase)
+				throw new APIError("CONFLICT", {
+					message:
+						quote.reason === "limit_reached"
+							? "Purchase limit reached"
+							: "Resume the existing purchase first",
+					code:
+						quote.reason === "limit_reached"
+							? "PURCHASE_LIMIT_REACHED"
+							: "PURCHASE_PENDING",
+					pendingOrderId: quote.pendingOrderId,
+				});
+			const policy = purchasePolicy(product);
+			if (
+				(body.quoteVersion !== undefined || restrictedPurchase(policy)) &&
+				body.quoteVersion !== quote.quoteVersion
+			)
+				throw new APIError("CONFLICT", {
+					message: "Purchase quote changed; review the current price",
+					code: "PURCHASE_QUOTE_CHANGED",
 				});
 			const createdAt = new Date();
 			return publicOrder(
@@ -162,7 +195,16 @@ export function createBusinessService<Options extends BetterAuthOptions>(
 						productKey: product.key,
 						parentOrderId: null,
 						product: { ...product, createdAt: product.createdAt.toISOString() },
-						amount: product.amount,
+						amount: quote.amount,
+						pricing: {
+							baseAmount: quote.baseAmount,
+							discountAmount: quote.discountAmount,
+							firstPurchase: quote.firstPurchase,
+							policy,
+							quoteVersion: quote.quoteVersion,
+						},
+						checkoutStartedAt: null,
+						checkoutClosedAt: null,
 						currency: product.currency,
 						status: "pending",
 						providerOrderId: null,
@@ -189,11 +231,23 @@ export function createBusinessService<Options extends BetterAuthOptions>(
 				message: "Order does not belong to this user",
 			});
 		if (order.status !== "pending") return publicOrder(order);
+		if (order.checkoutClosedAt)
+			throw fail("Checkout is closed; request a new quote");
 		if (Date.now() >= order.expiresAt.getTime())
 			throw new APIError("BAD_REQUEST", {
 				message: "Payment window ended; existing payments still reconcile",
 			});
 		if (order.providerOrderId && order.checkoutURL) return publicOrder(order);
+		await transaction(referenceId, async (db) => {
+			const current = await getOrder(orderId, db);
+			if (current.checkoutClosedAt || current.status !== "pending")
+				throw fail("Checkout is no longer payable");
+			await db.update({
+				model: "businessOrder",
+				where: [{ field: "id", value: orderId }],
+				update: { checkoutStartedAt: current.checkoutStartedAt ?? new Date() },
+			});
+		});
 		const result = await provider(order.provider).createCheckout(order);
 		const url = new URL(result.url);
 		if (
@@ -330,6 +384,7 @@ export function createBusinessService<Options extends BetterAuthOptions>(
 			throw fail("Verified payment does not match the saved checkout");
 		await transaction(initial.referenceId, async (db) => {
 			const order = await getOrder(orderId, db);
+			const policyConflict = await purchaseConflict(db, order);
 			const fresh = await recordEvent(
 				db,
 				order,
@@ -396,6 +451,7 @@ export function createBusinessService<Options extends BetterAuthOptions>(
 					periodStart,
 					periodEnd,
 					status: "paid",
+					reviewRequired: order.reviewRequired || policyConflict,
 				},
 			});
 			await monitor.payment(db, {
@@ -816,8 +872,95 @@ export function createBusinessService<Options extends BetterAuthOptions>(
 			refundPolicy: "includes-refunded-payments",
 		};
 	}
+	async function quoteOrder(referenceId: string, productId: string) {
+		const product = await products.get(productId);
+		if (
+			!product?.published ||
+			(await products.getLatest(product.key))?.id !== product.id
+		)
+			throw new APIError("BAD_REQUEST", {
+				message: "Product is not currently published",
+			});
+		return purchaseQuote(adapter, referenceId, product);
+	}
+	async function reconcileCheckout(referenceId: string, orderId: string) {
+		const order = await getOrder(orderId);
+		if (order.referenceId !== referenceId)
+			throw new APIError("FORBIDDEN", {
+				message: "Order does not belong to this user",
+			});
+		if (order.paidAt || order.checkoutClosedAt)
+			return {
+				order: publicOrder(order),
+				state: order.paidAt ? ("paid" as const) : ("closed" as const),
+			};
+		const adapter = provider(order.provider);
+		if (!adapter.inspectCheckout && order.providerOrderId) {
+			// Legacy adapters prove payments, not unpaid closure. Never release on a failed query.
+			try {
+				return {
+					order: await completeCheckout(referenceId, orderId),
+					state: "paid" as const,
+				};
+			} catch {
+				throw new APIError("CONFLICT", {
+					code: "PURCHASE_PAYMENT_UNCONFIRMED",
+					message:
+						"Payment is not confirmed; purchase eligibility remains reserved",
+				});
+			}
+		}
+		const state =
+			order.pricing &&
+			!order.checkoutStartedAt &&
+			!order.providerOrderId &&
+			Date.now() >= order.expiresAt.getTime()
+				? "closed"
+				: ((await provider(order.provider).inspectCheckout?.(order))?.state ??
+					"unknown");
+		if (state === "paid")
+			return { order: await completeCheckout(referenceId, orderId), state };
+		if (state === "closed")
+			await transaction(referenceId, async (db) => {
+				const current = await getOrder(orderId, db);
+				if (
+					!current.paidAt &&
+					current.checkoutStartedAt?.getTime() ===
+						order.checkoutStartedAt?.getTime() &&
+					current.providerOrderId === order.providerOrderId
+				)
+					await db.update({
+						model: "businessOrder",
+						where: [{ field: "id", value: orderId }],
+						update: { checkoutClosedAt: new Date() },
+					});
+			});
+		const current = await getOrder(orderId);
+		return {
+			order: publicOrder(current),
+			state: current.paidAt
+				? ("paid" as const)
+				: current.checkoutClosedAt
+					? ("closed" as const)
+					: state === "closed"
+						? ("unknown" as const)
+						: state,
+		};
+	}
 	return {
-		products,
+		products: {
+			...products,
+			save: async (input: Parameters<typeof products.save>[0]) => {
+				purchasePolicy({
+					type: input.type,
+					amount: input.amount,
+					limits: input.limits ?? {},
+				});
+				return products.save(input);
+			},
+		},
+		quoteOrder,
+		reconcileCheckout,
 		createOrder,
 		checkout,
 		getOrder,

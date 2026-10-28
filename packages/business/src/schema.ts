@@ -21,6 +21,16 @@ export const businessSchema = {
 	businessOrder: {
 		fields: {
 			...monitorOrderFields,
+			pricing: {
+				type: "json",
+				required: false,
+				transform: {
+					output: (value: unknown) =>
+						typeof value === "string" ? JSON.parse(value) : value,
+				},
+			},
+			checkoutStartedAt: { type: "date", required: false },
+			checkoutClosedAt: { type: "date", required: false },
 			referenceId: { type: "string", required: true, index: true },
 			checkoutKey: { type: "string", required: true, unique: true },
 			provider: { type: "string", required: true },

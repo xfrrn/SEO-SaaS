@@ -23,6 +23,7 @@ import { paymentStatsQuery } from "./analytics/validation";
 import { createMonitorService, monitorContext, monitorQuery } from "./monitor";
 import { businessSchema } from "./schema";
 import { assertBusinessDatabase, createBusinessService } from "./service";
+import { purchasePolicy } from "./purchase-policy";
 import type { BusinessOptions, BusinessPermission } from "./types";
 import {
 	creditAdjustment,
@@ -41,6 +42,12 @@ export type {
 	MonitorRecord,
 } from "./monitor";
 export { createBusinessService } from "./service";
+export { purchasePolicy, purchasePolicySchema } from "./purchase-policy";
+export type {
+	PurchasePolicy,
+	PurchaseQuote,
+	PurchasePricing,
+} from "./purchase-policy";
 export type * from "./types";
 
 declare module "@better-auth/core" {
@@ -332,6 +339,36 @@ export function business(options: BusinessOptions = {}) {
 				async (ctx) =>
 					service(ctx).products.list({ ...ctx.query, publishedOnly: true }),
 			),
+			quoteBusinessOrder: createAuthEndpoint(
+				"/business/orders/quote",
+				{
+					method: "POST",
+					requireHeaders: true,
+					use: [sessionMiddleware],
+					body: z.object({ productId: identifier }),
+					metadata: { noStore: true },
+				},
+				async (ctx) =>
+					service(ctx).quoteOrder(
+						ctx.context.session.user.id,
+						ctx.body.productId,
+					),
+			),
+			reconcileBusinessCheckout: createAuthEndpoint(
+				"/business/orders/reconcile-checkout",
+				{
+					method: "POST",
+					requireHeaders: true,
+					use: [sessionMiddleware],
+					body: z.object({ orderId: identifier }),
+					metadata: { noStore: true },
+				},
+				async (ctx) =>
+					service(ctx).reconcileCheckout(
+						ctx.context.session.user.id,
+						ctx.body.orderId,
+					),
+			),
 			createBusinessOrder: createAuthEndpoint(
 				"/business/orders/create",
 				{
@@ -428,6 +465,7 @@ export function business(options: BusinessOptions = {}) {
 				},
 				async (ctx) => {
 					const actorId = ctx.context.session.user.id;
+					purchasePolicy(ctx.body.product);
 					return service(ctx).manual(
 						actorId,
 						ctx.body.operationId,

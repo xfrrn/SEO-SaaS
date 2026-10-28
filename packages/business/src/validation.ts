@@ -23,6 +23,7 @@ export const newOrder = z.object({
 	productId: identifier,
 	provider: identifier,
 	idempotencyKey: identifier,
+	quoteVersion: identifier.optional(),
 });
 export const paymentConfirmation = z.object({
 	orderId: identifier,

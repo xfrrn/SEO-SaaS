@@ -1,6 +1,6 @@
 {
   "name": "@app/business",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Commerce and administrative workflows for the application SDK",
   "type": "module",

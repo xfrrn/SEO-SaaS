@@ -226,6 +226,7 @@ export function createMediaEngineClient(config: {
 					id: z.string(),
 					version: z.number().int().positive(),
 					status: z.literal("published"),
+					supported_output_resolutions: z.array(z.string()).optional().default([]),
 					input_schema: z.array(
 						z
 							.object({
@@ -249,6 +250,7 @@ export function createMediaEngineClient(config: {
 							name: z.string(),
 							version: z.number().int().positive(),
 							status: z.string(),
+							supported_output_resolutions: z.array(z.string()).optional().default([]),
 							input_schema: z.array(
 								z
 									.object({

@@ -1,6 +1,7 @@
 import type { Product } from "@app/subscription";
 import type { Session, User } from "better-auth";
 import type { MonitorOptions } from "./monitor";
+import type { PurchasePricing } from "./purchase-policy";
 
 /** JSON-persisted responses preserve dates as ISO strings, including on idempotent replay. */
 export type BusinessJSON<T> = T extends Date
@@ -36,6 +37,9 @@ export interface BusinessOrder {
 	createdAt: Date;
 	expiresAt: Date;
 	fulfilledAt: Date | null;
+	pricing?: PurchasePricing | null;
+	checkoutStartedAt?: Date | null;
+	checkoutClosedAt?: Date | null;
 }
 
 /** Returned only after a server-side provider query/signature and ownership verification. */
@@ -61,6 +65,10 @@ export interface VerifiedRefund {
 
 /** Adapt an existing payment integration; no recurring-charge or refund initiation API is added. */
 export interface BusinessPaymentProvider {
+	/** A closed result must prove the checkout is unpaid and cannot accept another payment. */
+	inspectCheckout?: (
+		order: BusinessOrder,
+	) => Promise<{ state: "open" | "paid" | "closed" | "unknown" }>;
 	/** Reuse order.id as the provider idempotency key. Values come from the persisted order. */
 	createCheckout(order: BusinessOrder): Promise<{
 		providerOrderId: string;

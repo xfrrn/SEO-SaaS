@@ -58,7 +58,7 @@ Dashboard 通过 `PAYMENT_PROVIDER=stripe`、`paypal` 或 `waffo` 选择收款�
 pnpm pack:sdk
 ```
 
-当前 SDK 版本为 **0.4.0**，新增中台客户端、审核动作回执与原生积分冻结，见 [版本说明](./docs/sdk-0.4.0.md) 和 [中台接入](./docs/media-engine-usage.md)。产物为 **`dist/auth-sdk.tgz`**。其中包含本仓库构建的认证核心、Kysely/内存适配器、i18n、API Key、Redis 存储、MCP 及其 OAuth Provider 依赖，以及通用订阅、credits、business、Stripe 及 PayPal 包，保留你的本地修改。复制到使用方项目的 `vendor/` 后安装：
+当前 SDK 版本为 **0.5.0**，新增原生积分商品购买策略、并发资格占用和订单报价，见 [版本说明](./docs/sdk-0.5.0.md) 和 [中台接入](./docs/media-engine-usage.md)。产物为 **`dist/auth-sdk.tgz`**。其中包含本仓库构建的认证核心、Kysely/内存适配器、i18n、API Key、Redis 存储、MCP 及其 OAuth Provider 依赖，以及通用订阅、credits、business、Stripe 及 PayPal 包，保留你的本地修改。复制到使用方项目的 `vendor/` 后安装：
 
 ```bash
 pnpm add ./vendor/auth-sdk.tgz

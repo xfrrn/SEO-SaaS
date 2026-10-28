@@ -136,6 +136,18 @@ export function createPayPalBusinessProvider(options: {
 			}
 			return { providerOrderId: remote.id, url: url.href };
 		},
+		async inspectCheckout(order) {
+			if (!order.providerOrderId) return { state: "unknown" };
+			const remote = await options.client.getOrder(order.providerOrderId);
+			return {
+				state:
+					remote.status === "COMPLETED"
+						? "paid"
+						: remote.status === "VOIDED"
+							? "closed"
+							: "open",
+			};
+		},
 		async verifyPayment({ order, reference }) {
 			if (!order.providerOrderId || reference !== order.providerOrderId) {
 				throw new Error("PayPal reference does not match the business order");
