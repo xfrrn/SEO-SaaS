@@ -225,8 +225,16 @@ export function createMediaEngineClient(config: {
 				z.object({
 					id: z.string(),
 					version: z.number().int().positive(),
+					family_id: z.string().min(1).optional(),
+					parent_template_id: z.string().optional(),
+					variant_targets: z
+						.array(z.enum(["subject", "background"]))
+						.optional(),
 					status: z.literal("published"),
-					supported_output_resolutions: z.array(z.string()).optional().default([]),
+					supported_output_resolutions: z
+						.array(z.string())
+						.optional()
+						.default([]),
 					input_schema: z.array(
 						z
 							.object({
@@ -248,9 +256,17 @@ export function createMediaEngineClient(config: {
 						z.object({
 							id: z.string(),
 							name: z.string(),
+							family_id: z.string().min(1).optional(),
+							parent_template_id: z.string().optional(),
+							variant_targets: z
+								.array(z.enum(["subject", "background"]))
+								.optional(),
 							version: z.number().int().positive(),
 							status: z.string(),
-							supported_output_resolutions: z.array(z.string()).optional().default([]),
+							supported_output_resolutions: z
+								.array(z.string())
+								.optional()
+								.default([]),
 							input_schema: z.array(
 								z
 									.object({

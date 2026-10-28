@@ -31,6 +31,8 @@ The user approved implementing the [cross-repository media migration plan](<../A
 
 SDK 0.5.1 adds optional Engine asset retention metadata and distinct expired-file errors; deletion remains in Engine. The fixed 0.4.0 moderation runtime is unchanged. See docs/media-engine-usage.md.
 
+SDK 0.5.2 preserves optional template family/variant metadata in list/detail responses. Each variant still submits its own template ID and immutable version; family membership never grants access or merges workflows. See docs/media-engine-usage.md.
+
 ## Commands
 
 - ALWAYS use `pnpm` (never npm, yarn, or bun)
