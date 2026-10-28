@@ -25,8 +25,8 @@ catalogs:
       specifier: ^6.0.3
       version: 6.0.3
     zod:
-      specifier: ^4.5.4
-      version: 4.5.4
+      specifier: ^4.6.6
+      version: 4.6.7
   react19:
     '@types/react':
       specifier: ^19.2.17
@@ -47,16 +47,16 @@ catalogs:
 
 overrides:
   kysely: 0.28.17
-  zod@>=4: 4.5.4
+  zod@>=4: 4.6.6
   axios: '>=1.18.0 <2'
-  node-forge: '>=1.4.0 <2'
+  node-forge: '>=1.4.1 <2'
   h3@<2: '>=1.15.9'
   h3-v2: npm:h3@^2.0.1-rc.15
   brace-expansion: '>=5.0.8 <6'
   minimatch@<10: '>=10.2.4 <11'
   test-exclude@<7: '>=7.0.1 <8'
   cookie@<0.7.0: '>=0.7.2 <0.8'
-  '@xmldom/xmldom@<0.8.13': '>=0.8.13 <0.9'
+  '@xmldom/xmldom@<0.8.15': '>=0.8.15 <0.9'
   devalue@>=5.6.3 <=5.8.0: 5.8.1
   esbuild@<0.28.1: '>=0.28.1 <0.29'
   fast-uri@<=3.1.3: '>=3.1.4 <4'
@@ -238,10 +238,10 @@ importers:
         version: 0.4.2
       better-call:
         specifier: 'catalog:'
-        version: 1.4.0(zod@4.5.4)
+        version: 1.4.0(zod@4.6.7)
       zod:
         specifier: 'catalog:'
-        version: 4.5.4
+        version: 4.6.7
     devDependencies:
       '@better-auth/core':
         specifier: workspace:*
@@ -290,7 +290,7 @@ importers:
         version: 5.11.1
       zod:
         specifier: 'catalog:'
-        version: 4.5.4
+        version: 4.6.7
     devDependencies:
       '@better-auth/core':
         specifier: workspace:*
@@ -360,7 +360,7 @@ importers:
         version: 2.2.0
       better-call:
         specifier: 'catalog:'
-        version: 1.4.0(zod@4.5.4)
+        version: 1.4.0(zod@4.6.7)
       defu:
         specifier: '>=6.1.5 <7'
         version: 6.1.7
@@ -378,7 +378,7 @@ importers:
         version: 5.56.0
       zod:
         specifier: 'catalog:'
-        version: 4.5.4
+        version: 4.6.7
     devDependencies:
       '@lynx-js/react':
         specifier: ^0.121.2
@@ -472,7 +472,7 @@ importers:
         version: link:../subscription
       zod:
         specifier: 'catalog:'
-        version: 4.5.4
+        version: 4.6.7
     devDependencies:
       '@better-auth/core':
         specifier: workspace:*
@@ -482,7 +482,7 @@ importers:
         version: link:../better-auth
       better-call:
         specifier: 'catalog:'
-        version: 1.4.0(zod@4.5.4)
+        version: 1.4.0(zod@4.6.7)
       tsdown:
         specifier: 'catalog:'
         version: 0.21.10(publint@0.3.21)(typescript@6.0.3)
@@ -497,7 +497,7 @@ importers:
     dependencies:
       better-call:
         specifier: 'catalog:'
-        version: 1.4.0(zod@4.5.4)
+        version: 1.4.0(zod@4.6.6)
     devDependencies:
       '@better-auth/core':
         specifier: workspace:*
@@ -534,7 +534,7 @@ importers:
         version: 1.1.0
       zod:
         specifier: 'catalog:'
-        version: 4.5.4
+        version: 4.6.7
     devDependencies:
       '@better-auth/utils':
         specifier: 'catalog:'
@@ -556,7 +556,7 @@ importers:
         version: 2.10.0(@opentelemetry/api@1.9.1)
       better-call:
         specifier: 'catalog:'
-        version: 1.4.0(zod@4.5.4)
+        version: 1.4.0(zod@4.6.7)
       jose:
         specifier: ^6.2.3
         version: 6.2.3
@@ -574,7 +574,7 @@ importers:
     dependencies:
       zod:
         specifier: 'catalog:'
-        version: 4.5.4
+        version: 4.6.7
     devDependencies:
       '@better-auth/core':
         specifier: workspace:*
@@ -584,7 +584,7 @@ importers:
         version: link:../better-auth
       better-call:
         specifier: 'catalog:'
-        version: 1.4.0(zod@4.5.4)
+        version: 1.4.0(zod@4.6.7)
       tsdown:
         specifier: 'catalog:'
         version: 0.21.10(publint@0.3.21)(typescript@6.0.3)
@@ -605,13 +605,13 @@ importers:
         version: 1.3.2
       better-call:
         specifier: 'catalog:'
-        version: 1.4.0(zod@4.5.4)
+        version: 1.4.0(zod@4.6.7)
       conf:
         specifier: ^15.0.2
         version: 15.1.0
       zod:
         specifier: 'catalog:'
-        version: 4.5.4
+        version: 4.6.7
     devDependencies:
       '@better-auth/core':
         specifier: workspace:*
@@ -639,10 +639,10 @@ importers:
         version: 1.3.2
       better-call:
         specifier: 'catalog:'
-        version: 1.4.0(zod@4.5.4)
+        version: 1.4.0(zod@4.6.7)
       zod:
         specifier: 'catalog:'
-        version: 4.5.4
+        version: 4.6.7
     devDependencies:
       '@better-auth/core':
         specifier: workspace:*
@@ -676,7 +676,7 @@ importers:
     dependencies:
       zod:
         specifier: 'catalog:'
-        version: 4.5.4
+        version: 4.6.7
     devDependencies:
       '@better-auth/core':
         specifier: workspace:*
@@ -686,7 +686,7 @@ importers:
         version: link:../better-auth
       better-call:
         specifier: 'catalog:'
-        version: 1.4.0(zod@4.5.4)
+        version: 1.4.0(zod@4.6.7)
       tsdown:
         specifier: 'catalog:'
         version: 0.21.10(publint@0.3.21)(typescript@6.0.3)
@@ -759,7 +759,7 @@ importers:
         version: link:../better-auth
       better-call:
         specifier: 'catalog:'
-        version: 1.4.0(zod@4.5.4)
+        version: 1.4.0(zod@4.6.6)
       tsdown:
         specifier: 'catalog:'
         version: 0.21.10(publint@0.3.21)(typescript@6.0.3)
@@ -789,13 +789,13 @@ importers:
         version: 1.3.2
       better-call:
         specifier: 'catalog:'
-        version: 1.4.0(zod@4.5.4)
+        version: 1.4.0(zod@4.6.7)
       jose:
         specifier: ^6.2.3
         version: 6.2.3
       zod:
         specifier: 'catalog:'
-        version: 4.5.4
+        version: 4.6.7
     devDependencies:
       '@better-auth/core':
         specifier: workspace:*
@@ -829,10 +829,10 @@ importers:
         version: 13.3.1
       better-call:
         specifier: 'catalog:'
-        version: 1.4.0(zod@4.5.4)
+        version: 1.4.0(zod@4.6.7)
       zod:
         specifier: 'catalog:'
-        version: 4.5.4
+        version: 4.6.7
     devDependencies:
       '@better-auth/core':
         specifier: workspace:*
@@ -900,10 +900,10 @@ importers:
         version: link:../better-auth
       better-call:
         specifier: 'catalog:'
-        version: 1.4.0(zod@4.5.4)
+        version: 1.4.0(zod@4.6.7)
       zod:
         specifier: 'catalog:'
-        version: 4.5.4
+        version: 4.6.7
     devDependencies:
       '@better-auth/core':
         specifier: workspace:*
@@ -952,7 +952,7 @@ importers:
         version: 7.4.3
       zod:
         specifier: 'catalog:'
-        version: 4.5.4
+        version: 4.6.7
     devDependencies:
       '@better-auth/core':
         specifier: workspace:*
@@ -971,7 +971,7 @@ importers:
         version: link:../better-auth
       better-call:
         specifier: 'catalog:'
-        version: 1.4.0(zod@4.5.4)
+        version: 1.4.0(zod@4.6.7)
       body-parser:
         specifier: ^2.3.0
         version: 2.3.0
@@ -998,7 +998,7 @@ importers:
         version: 6.1.7
       zod:
         specifier: 'catalog:'
-        version: 4.5.4
+        version: 4.6.7
     devDependencies:
       '@app/business':
         specifier: workspace:*
@@ -1011,7 +1011,7 @@ importers:
         version: link:../better-auth
       better-call:
         specifier: 'catalog:'
-        version: 1.4.0(zod@4.5.4)
+        version: 1.4.0(zod@4.6.7)
       stripe:
         specifier: ^22.0.1
         version: 22.0.1(@types/node@25.9.4)
@@ -1023,7 +1023,7 @@ importers:
     dependencies:
       zod:
         specifier: 'catalog:'
-        version: 4.5.4
+        version: 4.6.7
     devDependencies:
       '@better-auth/core':
         specifier: workspace:*
@@ -1033,7 +1033,7 @@ importers:
         version: link:../better-auth
       better-call:
         specifier: 'catalog:'
-        version: 1.4.0(zod@4.5.4)
+        version: 1.4.0(zod@4.6.7)
       tsdown:
         specifier: 'catalog:'
         version: 0.21.10(publint@0.3.21)(typescript@6.0.3)
@@ -3692,10 +3692,9 @@ packages:
     resolution: {integrity: sha512-CJDxIgE5I0FH+ttq/Fxy6nRpxP70+e2O048EPe85J2use3XKdatVM7dDVvFNjQudd9B49NPoZ+8PG49zj4Er8Q==}
     engines: {node: '>= 16'}
 
-  '@xmldom/xmldom@0.8.13':
-    resolution: {integrity: sha512-KRYzxepc14G/CEpEGc3Yn+JKaAeT63smlDr+vjB8jRfgTBBI9wRj/nkQEO+ucV8p8I9bfKLWp37uHgFrbntPvw==}
+  '@xmldom/xmldom@0.8.15':
+    resolution: {integrity: sha512-/5NV/vDALVFDXgLmfsy9TRCBlKwO2LNBFzpzvb9iIj+jR+eSc6DLYYvVOdivT/jm7MtU6TebYuRmzEOI7w40UA==}
     engines: {node: '>=10.0.0'}
-    deprecated: this version has critical issues, please update to the latest version
 
   '@xmldom/xmldom@0.9.12':
     resolution: {integrity: sha512-5AXjrcMClTryPe9LgZrygpB1lj7s0S9E0+W+AHaVKAVyHanafK86iPSvG5xHVSp/jC+VH1UXu0TAEmY279xH7A==}
@@ -3904,7 +3903,7 @@ packages:
   better-call@1.4.0:
     resolution: {integrity: sha512-bBKOT4vv1kZLDgxVePdilk/Jwkn+dtRRsmi3DzHcDP+WnswyVl6dR59l2HEeP/0cB+bDoopASAesWDPIdd/zZA==}
     peerDependencies:
-      zod: 4.5.4
+      zod: 4.6.6
     peerDependenciesMeta:
       zod:
         optional: true
@@ -5630,8 +5629,8 @@ packages:
   node-addon-api@7.1.1:
     resolution: {integrity: sha512-5m3bsyrjFWE1xf7nz7YXdN4udnVtXK6/Yfgn5qnahL6bCkf2yKt4k3nuTKAtT4r3IG8JNR2ncsIMdZuAzJjHQQ==}
 
-  node-forge@1.4.0:
-    resolution: {integrity: sha512-LarFH0+6VfriEhqMMcLX2F7SwSXeWwnEAJEsYm5QKWchiVYVvJyV9v7UDvUv+w5HO23ZpQTXDv/GxdDdMyOuoQ==}
+  node-forge@1.4.2:
+    resolution: {integrity: sha512-rRtAR5XLJ8gCKd9du4qrKAsgCG1ObGP4gLeNJMa4vYSeq4bmBMOJk5IHkrviBV0q7uoAJlVd8HEQYQSVUb4FGQ==}
     engines: {node: '>= 6.13.0'}
 
   node-int64@0.4.0:
@@ -7213,8 +7212,11 @@ packages:
   zimmerframe@1.1.4:
     resolution: {integrity: sha512-B58NGBEoc8Y9MWWCQGl/gq9xBCe4IiKM0a2x7GZdQKOW5Exr8S1W24J6OgM1njK8xCRGvAJIL/MxXHf6SkmQKQ==}
 
-  zod@4.5.4:
-    resolution: {integrity: sha512-sC95tT5iHHH9gtpj6A81kh+NEaRAUFN+qlUPDUbRfOMvNf5QCBqsb3WgvnpVtK5Y+4UfA6KqufotuTvMGiTlsA==}
+  zod@4.6.6:
+    resolution: {integrity: sha512-4UmzQUF5fxvfcYHlbjBmejU+w+hbDnWFx4aS8kBx7nPBHcO2SqPbpAG8snbdg+Xse4pRefR98hgjFgIMCI/UhA==}
+
+  zod@4.6.7:
+    resolution: {integrity: sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg==}
 
 snapshots:
 
@@ -7226,7 +7228,7 @@ snapshots:
 
   '@authenio/xml-encryption@2.0.2':
     dependencies:
-      '@xmldom/xmldom': 0.8.13
+      '@xmldom/xmldom': 0.8.15
       escape-html: 1.0.3
       xpath: 0.0.32
 
@@ -8155,7 +8157,7 @@ snapshots:
       glob: 13.0.6
       lan-network: 0.1.7
       minimatch: 10.2.4
-      node-forge: 1.4.0
+      node-forge: 1.4.2
       npm-package-arg: 11.0.3
       ora: 3.4.0
       picomatch: 3.0.2
@@ -8191,7 +8193,7 @@ snapshots:
 
   '@expo/code-signing-certificates@0.0.6':
     dependencies:
-      node-forge: 1.4.0
+      node-forge: 1.4.2
 
   '@expo/config-plugins@54.0.4':
     dependencies:
@@ -8369,7 +8371,7 @@ snapshots:
 
   '@expo/plist@0.4.8':
     dependencies:
-      '@xmldom/xmldom': 0.8.13
+      '@xmldom/xmldom': 0.8.15
       base64-js: 1.5.1
       xmlbuilder: 15.1.1
 
@@ -8622,16 +8624,16 @@ snapshots:
       eventsource-parser: 3.1.0
       jose: 6.2.3
       pkce-challenge: 5.0.1
-      zod: 4.5.4
+      zod: 4.6.6
 
   '@modelcontextprotocol/core@2.0.0':
     dependencies:
-      zod: 4.5.4
+      zod: 4.6.6
 
   '@modelcontextprotocol/server@2.0.0':
     dependencies:
       '@modelcontextprotocol/core': 2.0.0
-      zod: 4.5.4
+      zod: 4.6.6
 
   '@mswjs/interceptors@0.41.3':
     dependencies:
@@ -9719,7 +9721,7 @@ snapshots:
       jiti: 2.7.0
       magic-string: 0.30.21
       prettier: 3.8.3
-      zod: 4.5.4
+      zod: 4.6.6
     transitivePeerDependencies:
       - supports-color
 
@@ -9737,7 +9739,7 @@ snapshots:
       '@tanstack/virtual-file-routes': 1.162.0
       chokidar: 5.0.0
       unplugin: 3.3.0(esbuild@0.28.1)(rollup@4.60.4)(vite@6.4.3(@types/node@25.9.4)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.46.1)(yaml@2.9.0))
-      zod: 4.5.4
+      zod: 4.6.6
     optionalDependencies:
       '@tanstack/react-router': 1.170.10(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       vite: 6.4.3(@types/node@25.9.4)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.46.1)(yaml@2.9.0)
@@ -9852,7 +9854,7 @@ snapshots:
       ufo: 1.6.3
       vitefu: 1.1.3(vite@6.4.3(@types/node@25.9.4)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.46.1)(yaml@2.9.0))
       xmlbuilder2: 4.0.3
-      zod: 4.5.4
+      zod: 4.6.6
     optionalDependencies:
       vite: 6.4.3(@types/node@25.9.4)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.46.1)(yaml@2.9.0)
     transitivePeerDependencies:
@@ -10122,7 +10124,7 @@ snapshots:
 
   '@xmldom/is-dom-node@1.0.1': {}
 
-  '@xmldom/xmldom@0.8.13': {}
+  '@xmldom/xmldom@0.8.15': {}
 
   '@xmldom/xmldom@0.9.12': {}
 
@@ -10335,14 +10337,23 @@ snapshots:
     dependencies:
       safe-buffer: 5.1.2
 
-  better-call@1.4.0(zod@4.5.4):
+  better-call@1.4.0(zod@4.6.6):
     dependencies:
       '@better-auth/utils': 0.5.0
       '@better-fetch/fetch': 1.3.1
       rou3: 0.9.1
       set-cookie-parser: 3.1.2
     optionalDependencies:
-      zod: 4.5.4
+      zod: 4.6.6
+
+  better-call@1.4.0(zod@4.6.7):
+    dependencies:
+      '@better-auth/utils': 0.5.0
+      '@better-fetch/fetch': 1.3.1
+      rou3: 0.9.1
+      set-cookie-parser: 3.1.2
+    optionalDependencies:
+      zod: 4.6.7
 
   better-opn@3.0.2:
     dependencies:
@@ -11647,7 +11658,7 @@ snapshots:
       http-shutdown: 1.2.2
       jiti: 2.6.1
       mlly: 1.8.0
-      node-forge: 1.4.0
+      node-forge: 1.4.2
       pathe: 1.1.2
       std-env: 3.10.0
       ufo: 1.6.3
@@ -12224,7 +12235,7 @@ snapshots:
 
   node-addon-api@7.1.1: {}
 
-  node-forge@1.4.0: {}
+  node-forge@1.4.2: {}
 
   node-int64@0.4.0: {}
 
@@ -12444,7 +12455,7 @@ snapshots:
 
   plist@3.1.0:
     dependencies:
-      '@xmldom/xmldom': 0.8.13
+      '@xmldom/xmldom': 0.8.15
       base64-js: 1.5.1
       xmlbuilder: 15.1.1
 
@@ -12921,7 +12932,7 @@ snapshots:
   samlify@2.13.1:
     dependencies:
       '@authenio/xml-encryption': 2.0.2
-      '@xmldom/xmldom': 0.8.13
+      '@xmldom/xmldom': 0.8.15
       node-rsa: 1.1.1
       xml: 1.0.1
       xml-crypto: 6.1.2
@@ -13683,7 +13694,7 @@ snapshots:
   xml-crypto@6.1.2:
     dependencies:
       '@xmldom/is-dom-node': 1.0.1
-      '@xmldom/xmldom': 0.8.13
+      '@xmldom/xmldom': 0.8.15
       xpath: 0.0.33
 
   xml-escape@1.1.0: {}
@@ -13740,4 +13751,6 @@ snapshots:
 
   zimmerframe@1.1.4: {}
 
-  zod@4.5.4: {}
+  zod@4.6.6: {}
+
+  zod@4.6.7: {}
