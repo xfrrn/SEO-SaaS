@@ -88,3 +88,88 @@ it("applies website enforcement with its receipt in one transaction and never re
 		reason_code: "ACTION_UNSUPPORTED_TYPE",
 	});
 });
+
+it("protects administrators configured via adminRoles or adminUserIds from enforcement", async () => {
+	const instance = await getTestInstance(
+		{
+			plugins: [
+				admin(),
+				{ id: "media-actions", schema: mediaEngineActionReceiptSchema },
+			],
+		},
+		{ testWith: "sqlite" },
+	);
+	const { client } = instance;
+	const { adapter } = await instance.auth.$context;
+
+	const eventFor = (
+		userId: string,
+		actionId: string,
+	): MediaEngineActionEvent => ({
+		event_version: 2,
+		event_id: `evt-${actionId}`,
+		event: "moderation.action",
+		application_id: "app1",
+		external_user_id: userId,
+		action_id: actionId,
+		attempt_id: "attempt1",
+		decision_id: "decision1",
+		type: "ban",
+		parameters: {},
+		expires_at: new Date(Date.now() + 60000).toISOString(),
+		reason_code: "ACTION_REQUIRED",
+	});
+
+	const makeUser = async (role?: string) => {
+		const email = `media-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@test.com`;
+		const { data } = await client.signUp.email({
+			email,
+			password: "password123",
+			name: "Media Test",
+		});
+		if (role) {
+			await adapter.update({
+				model: "user",
+				where: [{ field: "id", value: data.user.id }],
+				update: { role },
+			});
+		}
+		return data.user.id;
+	};
+
+	// A user whose role matches a configured adminRoles entry is protected.
+	const roleAdminId = await makeUser("moderator");
+	await expect(
+		adapter.transaction((tx) =>
+			applyMediaEngineAction(tx, eventFor(roleAdminId, "action-mod"), {
+				adminRoles: ["moderator"],
+			}),
+		),
+	).resolves.toEqual({
+		status: "failed",
+		reason_code: "ACTION_ADMIN_REVIEW_REQUIRED",
+	});
+
+	// A user listed in adminUserIds is protected even without a matching role.
+	const idAdminId = await makeUser();
+	await expect(
+		adapter.transaction((tx) =>
+			applyMediaEngineAction(tx, eventFor(idAdminId, "action-id"), {
+				adminUserIds: [idAdminId],
+			}),
+		),
+	).resolves.toEqual({
+		status: "failed",
+		reason_code: "ACTION_ADMIN_REVIEW_REQUIRED",
+	});
+
+	// A non-administrator is still banned.
+	const regularId = await makeUser();
+	await expect(
+		adapter.transaction((tx) =>
+			applyMediaEngineAction(tx, eventFor(regularId, "action-reg"), {
+				adminRoles: ["moderator"],
+			}),
+		),
+	).resolves.toEqual({ status: "succeeded", reason_code: "ACTION_APPLIED" });
+});
