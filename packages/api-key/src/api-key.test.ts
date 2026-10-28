@@ -2057,7 +2057,7 @@ describe("api-key", async () => {
 			});
 
 			const { user } = await signInWithTestUser();
-			const apiKey = await auth.api.createApiKey({
+			const scopedKey = await auth.api.createApiKey({
 				body: {
 					userId: user.id,
 					permissions: { files: ["read"] },
@@ -2065,7 +2065,7 @@ describe("api-key", async () => {
 			});
 
 			const headers = new Headers();
-			headers.set("x-api-key", apiKey.key);
+			headers.set("x-api-key", scopedKey.key);
 
 			await expect(auth.api.getSession({ headers })).rejects.toThrowError();
 		});
