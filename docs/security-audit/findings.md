@@ -63,9 +63,11 @@ Applied:
   role, so authorization decisions no longer read a stale snapshot.
 - **L15** — credits balance/ledger and subscription list reads use the authoritative
   session (not the cookie cache) and reject banned/impersonated sessions.
+- **L14** — PayPal webhook verification rejects oversized bodies before any outbound
+  call, and the dashboard payment webhook route enforces a `Content-Length` cap.
 
 Not code-changed (documented as recommendations): **L4**, **L6**, **L7**, **L8**
-(documented defaults), and **L9**, **L12**, **L13**, **L14**, **L16**, **L17** (larger
+(documented defaults), and **L9**, **L12**, **L13**, **L16**, **L17** (larger
 design changes or type-ripple risk) — see `remediation-plan.md`.
 
 Remaining L1–L17 are hardening items tracked in `remediation-plan.md`.

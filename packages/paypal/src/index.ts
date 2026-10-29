@@ -176,6 +176,9 @@ function validateReturnURL(value: string) {
 	}
 }
 
+/** PayPal webhook events are small; reject oversized deliveries before any outbound verification call. */
+const MAX_WEBHOOK_BODY_BYTES = 256 * 1024;
+
 function webhookError() {
 	return Object.assign(new Error("Invalid PayPal webhook signature or event"), {
 		name: "PayPalWebhookError",
@@ -413,6 +416,9 @@ export function createPayPalClient(options: PayPalOptions) {
 			headers: Headers;
 			body: string;
 		}): Promise<PayPalWebhookEvent> {
+			if (input.body.length > MAX_WEBHOOK_BODY_BYTES) {
+				throw webhookError();
+			}
 			const fields = {
 				auth_algo: input.headers.get("paypal-auth-algo"),
 				cert_url: input.headers.get("paypal-cert-url"),
