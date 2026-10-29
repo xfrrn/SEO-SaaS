@@ -215,3 +215,6 @@ state.txt
 .claude/worktrees
 
 .deepsec
+
+# Security-audit scanner raw output (regenerable; summaries live in docs/security-audit/findings.md)
+docs/security-audit/tooling/*.json

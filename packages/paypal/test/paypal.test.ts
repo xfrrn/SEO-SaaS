@@ -679,6 +679,20 @@ describe("PayPal webhook verification", () => {
 		});
 	});
 
+	it("rejects an oversized delivery before any outbound verification call", async () => {
+		const client = createPayPalClient(credentials);
+		const oversized = JSON.stringify({
+			id: "WH-EVENT-1",
+			event_type: "PAYMENT.CAPTURE.COMPLETED",
+			resource: { id: "CAPTURE123", status: "COMPLETED" },
+			padding: "x".repeat(256 * 1024),
+		});
+		await expect(
+			client.verifyWebhook({ headers: webhookHeaders(), body: oversized }),
+		).rejects.toThrow();
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
 	it("preserves raw event formatting, numeric literals and string escapes for verification", async () => {
 		const client = createPayPalClient(credentials);
 		const body =

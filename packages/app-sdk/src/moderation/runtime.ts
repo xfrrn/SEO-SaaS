@@ -60,9 +60,11 @@ export function createModerationRuntime(options: ModerationOptions) {
 		permission: Permission,
 	): Promise<Prepared> {
 		contextSchema.parse(context);
-		await bounded(options.boundary_timeout_ms, () =>
+		const authorized = await bounded(options.boundary_timeout_ms, () =>
 			options.authorize(context, permission),
 		);
+		if (authorized === false)
+			throw moderationError("FORBIDDEN", "Moderation authorization was denied");
 		const resolved = await bounded(options.boundary_timeout_ms, () =>
 			options.resolvePolicy(context),
 		);

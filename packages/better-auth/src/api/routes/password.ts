@@ -102,6 +102,19 @@ export const requestPasswordReset = createAuthEndpoint(
 		}
 		const { email, redirectTo } = ctx.body;
 
+		/**
+		 * Enforce a constant-time floor so an attacker cannot distinguish "email
+		 * not found" (fast) from "email found" (slow external email-send) by
+		 * comparing response times.
+		 */
+		const MINIMUM_MS = 500;
+		const start = Date.now();
+		const sleepRemaining = async () => {
+			const remaining = MINIMUM_MS - (Date.now() - start);
+			if (remaining > 0)
+				await new Promise((resolve) => setTimeout(resolve, remaining));
+		};
+
 		const user = await ctx.context.internalAdapter.findUserByEmail(email, {
 			includeAccounts: true,
 		});
@@ -115,6 +128,7 @@ export const requestPasswordReset = createAuthEndpoint(
 				"dummy-verification-token",
 			);
 			ctx.context.logger.warn("Reset Password: User not found");
+			await sleepRemaining();
 			return ctx.json({
 				status: true,
 				message:
@@ -145,6 +159,7 @@ export const requestPasswordReset = createAuthEndpoint(
 				ctx.request,
 			),
 		);
+		await sleepRemaining();
 		return ctx.json({
 			status: true,
 			message:

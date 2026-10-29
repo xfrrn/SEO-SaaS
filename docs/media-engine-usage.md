@@ -31,7 +31,7 @@ Browser uploads go directly to the returned storage URL. Persist IDs/metadata; f
 
 Webhook verification accepts a 32+ character secret or `{current, previous: [{secret, expires_at}]}` validated with `mediaWebhookSecretSchema` (at most two old keys, explicit ISO UTC deadlines). The host may encode this object in its existing `MEDIA_ENGINE_WEBHOOK_SECRET` field, keeping the normal three-field setup. Stage receivers with both keys first, switch Engine's root WEBHOOK_SECRET, then remove expired old keys. Queued outbox bodies and event IDs do not change; each delivery signs with the current derived application key. Rotation does not renew timestamp tolerance or revive expired keys. Use a short planned overlap and verify every dependent website before changing the Engine root secret.
 
-For `moderation.action`, use `verifyMediaEngineNotification` and branch on `event`. Discover and persist the application identity server-side; signed events still need a durable inbox. Query `enforcementAction()` with a verified `purpose: 'enforce'` context, compare its current immutable binding, then call `applyMediaEngineAction(tx, event)` inside the inbox transaction. Register `mediaEngineActionReceiptSchema` with the native adapter and its unique actionId index. After commit, send the saved receipt using `acknowledgeAction()`, then mark inbox done. A lost ACK response retries the receipt; it must not repeat the account mutation. Ban/revoke_session are supported; limit/challenge and administrator accounts return explicit failed receipts for manual handling. Grant `moderation.enforce` explicitly in Engine; media.manage/review do not imply it.
+For `moderation.action`, use `verifyMediaEngineNotification` and branch on `event`. Discover and persist the application identity server-side; signed events still need a durable inbox. Query `enforcementAction()` with a verified `purpose: 'enforce'` context, compare its current immutable binding, then call `applyMediaEngineAction(tx, event, { adminRoles, adminUserIds })` inside the inbox transaction, passing the Admin plugin's `adminRoles` and `adminUserIds` so administrators configured through either setting (not only the literal `admin` role) are protected and return an explicit failed receipt. Register `mediaEngineActionReceiptSchema` with the native adapter and its unique actionId index. After commit, send the saved receipt using `acknowledgeAction()`, then mark inbox done. A lost ACK response retries the receipt; it must not repeat the account mutation. Ban/revoke_session are supported; limit/challenge and administrator accounts return explicit failed receipts for manual handling. Grant `moderation.enforce` explicitly in Engine; media.manage/review do not imply it.
 
 SDK 0.4.0 bundles native credits 0.2.0. Before enabling holds, add `creditEntry.holdState` and `reservationId` through the host's additive schema synchronization and verify both account/sequence and account/idempotency unique indexes. Old entries remain unchanged and restore as permanent batches. `balance()` now means available balance; use `account()` for total/reserved/available. `reservation(referenceId, reservationId)` returns the original hold/finalization facts.
 
@@ -61,3 +61,11 @@ Verification: `pnpm exec vitest run packages/app-sdk/test/media-engine.test.ts p
 Engine 的固定 0.4.0 审核运行包保持不变；0.5.1 是消费网站客户端的兼容扩展。迁移数据库、配置保留周期、首次启用与实际 R2 验证属于 Engine 的发布流程，本 SDK 更新不代表已启用自动清理或完成生产部署。
 
 本次验证：SDK 全量 802 项（含独立 PostgreSQL API Key 用例）、媒体客户端 9 项通过，构建与固定分发包生成通过。第一次全量因 API Key 套件使用默认 PostgreSQL 连接失败；显式指定隔离 BETTER_AUTH_TEST_POSTGRES_URL 后全量重跑通过，未修改认证实现或降低断言。未调用真实生成、审核或存储服务，未部署。
+
+## 同梗变体（SDK 0.5.2）
+
+模板列表和详情保留可选 family_id、parent_template_id、variant_targets（subject/background）。旧 Engine 响应仍兼容。一个模板族中的每个变体使用独立 template_id，其 version 只表示该变体内部的不可变发布修订；生成和幂等请求仍按原合同提交，不运行时合并父模板或继承兄弟授权。
+
+变体创建、输入/背景绑定与发布由 Engine 管理；网站品类可以关联多个执行映射，网站固定每次选择的变体、发布修订、输入顺序与积分报价。SDK 不新增生成执行器或网站内容目录，也不自动给应用授予同族其他模板的权限。Engine 固定0.4.0审核包保持不变。
+
+本轮媒体客户端10项及完整SDK805项通过，无失败或跳过。全量首次发现既有API Key测试的局部变量遮蔽同名插件构造函数，导致断言前ReferenceError；仅重命名局部变量后全量通过，未改权限逻辑。未调用真实付费服务或部署。

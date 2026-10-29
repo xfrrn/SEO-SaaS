@@ -2047,6 +2047,29 @@ describe("api-key", async () => {
 			await expect(auth.api.getSession({ headers })).rejects.toThrowError();
 		});
 
+		it("should not grant a session for a permission-scoped API key", async () => {
+			const { auth, signInWithTestUser } = await getTestInstance({
+				plugins: [
+					apiKey({
+						enableSessionForAPIKeys: true,
+					}),
+				],
+			});
+
+			const { user } = await signInWithTestUser();
+			const scopedKey = await auth.api.createApiKey({
+				body: {
+					userId: user.id,
+					permissions: { files: ["read"] },
+				},
+			});
+
+			const headers = new Headers();
+			headers.set("x-api-key", scopedKey.key);
+
+			await expect(auth.api.getSession({ headers })).rejects.toThrowError();
+		});
+
 		it("should not get session from an API key if enableSessionForAPIKeys is false", async () => {
 			const { client, auth, signInWithTestUser } = await getTestInstance(
 				{

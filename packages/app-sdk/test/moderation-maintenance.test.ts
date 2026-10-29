@@ -183,6 +183,41 @@ describe("moderation maintenance and evidence", () => {
 		).not.toContain("private:proof");
 	});
 
+	it("retains records that become legal hold during the erase window", async () => {
+		const { service, storage, options, seedAttempt, seedDecision } =
+			await setupLifecycle();
+		await seedAttempt();
+		const decision = await seedDecision({
+			evidence_ref: "private:proof",
+		} as Partial<ModerationDecision>);
+		let held = false;
+		options.erase = vi.fn(async () => {
+			if (held) return;
+			held = true;
+			await storage.transaction(context.tenant_id, async (tx) => {
+				const record = await tx.get<ModerationDecision>(
+					"decision",
+					decision.decision_id,
+				);
+				if (record)
+					await tx.replace(record, {
+						...record.data,
+						decision: "legal_hold",
+						enforcement: "quarantine",
+					});
+			});
+		});
+		await service.cleanupData({
+			context,
+			cleanup_id: "cleanup-hold",
+			idempotency_key: "batch-hold",
+			subject_id: context.subject_id,
+		});
+		expect(
+			await storage.get(context.tenant_id, "decision", decision.decision_id),
+		).not.toBeNull();
+	});
+
 	it("does not execute a shadow rule action even when its aggregate decision says enforce", async () => {
 		const { service, storage, options, policy, seedAttempt, seedDecision } =
 			await setupLifecycle();

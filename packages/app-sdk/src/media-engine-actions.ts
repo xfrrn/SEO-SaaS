@@ -28,8 +28,15 @@ type Receipt = {
 export async function applyMediaEngineAction<Options extends BetterAuthOptions>(
 	tx: DBTransactionAdapter<Options>,
 	event: MediaEngineActionEvent,
+	admin?: { adminRoles?: string | string[]; adminUserIds?: string[] },
 ) {
 	event = mediaActionEventSchema.parse(event);
+	const adminRoles = Array.isArray(admin?.adminRoles)
+		? admin.adminRoles
+		: admin?.adminRoles === undefined
+			? ["admin"]
+			: admin.adminRoles.split(",");
+	const adminUserIds = admin?.adminUserIds ?? [];
 	const binding = JSON.stringify([
 		event.application_id,
 		event.external_user_id,
@@ -57,7 +64,10 @@ export async function applyMediaEngineAction<Options extends BetterAuthOptions>(
 	if (!user) reasonCode = "ACTION_USER_NOT_FOUND";
 	else if (Date.parse(event.expires_at) <= Date.now())
 		reasonCode = "ACTION_EXPIRED";
-	else if (user.role?.split(",").includes("admin"))
+	else if (
+		adminUserIds.includes(user.id) ||
+		user.role?.split(",").some((role) => adminRoles.includes(role))
+	)
 		reasonCode = "ACTION_ADMIN_REVIEW_REQUIRED";
 	else if (event.type === "ban" || event.type === "revoke_session") {
 		if (event.type === "ban")

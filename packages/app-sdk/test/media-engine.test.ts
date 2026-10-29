@@ -6,6 +6,60 @@ import {
 	verifyMediaEngineEvent,
 } from "../src/media-engine";
 
+describe("template variants", () => {
+	it("retains family identity on list/detail and accepts legacy templates", async () => {
+		const template = {
+			id: "beach",
+			name: "Beach background",
+			version: 2,
+			status: "published",
+			input_schema: [],
+			family_id: "original",
+			parent_template_id: "original",
+			variant_targets: ["subject", "background"],
+		};
+		const client = createMediaEngineClient({
+			base_url: "https://engine.example",
+			api_key: "key",
+			fetch: async (url) =>
+				Response.json(
+					new URL(String(url)).pathname.endsWith("/beach")
+						? template
+						: { items: [template] },
+				),
+		});
+		expect(
+			(await client.template({ user_id: "user" }, "beach")).variant_targets,
+		).toEqual(["subject", "background"]);
+		expect(
+			(await client.templates({ user_id: "user" })).items[0]?.family_id,
+		).toBe("original");
+		const legacy = createMediaEngineClient({
+			base_url: "https://engine.example",
+			api_key: "key",
+			fetch: async () =>
+				Response.json({
+					id: "old",
+					version: 1,
+					status: "published",
+					input_schema: [],
+				}),
+		});
+		expect(
+			(await legacy.template({ user_id: "user" }, "old")).family_id,
+		).toBeUndefined();
+		const invalid = createMediaEngineClient({
+			base_url: "https://engine.example",
+			api_key: "key",
+			fetch: async () =>
+				Response.json({ ...template, variant_targets: ["untrusted-axis"] }),
+		});
+		await expect(
+			invalid.template({ user_id: "user" }, "beach"),
+		).rejects.toThrow();
+	});
+});
+
 describe("media retention", () => {
 	const asset = {
 		id: "asset-retained",

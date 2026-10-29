@@ -306,6 +306,9 @@ describe("forgot password", async () => {
 		});
 		expect(res.data?.status).toBe(true);
 		expect(onPasswordReset).toHaveBeenCalledOnce();
+		// The reset request now enforces a 500ms constant-time floor; run it with
+		// real timers so its internal setTimeout resolves, then re-fake for expiry.
+		vi.useRealTimers();
 		await runWithUser(async () => {
 			await client.requestPasswordReset({
 				email: testUser.email,

@@ -56,7 +56,9 @@ function estimateEntropy(str: string): number {
  * Validates that the secret meets minimum security requirements.
  * Throws BetterAuthError if the secret is invalid.
  * Skips validation for DEFAULT_SECRET in test environments only.
- * Only throws for DEFAULT_SECRET in production environment.
+ * The default secret is otherwise always rejected: the `NODE_ENV` heuristic is
+ * unreliable on runtimes that do not set it (Workers, Deno, plain Node), and a
+ * publicly known secret would let an attacker forge verification/session state.
  */
 function validateSecret(
 	secret: string,
@@ -68,7 +70,7 @@ function validateSecret(
 		return;
 	}
 
-	if (isDefaultSecret && isProduction) {
+	if (isDefaultSecret) {
 		throw new BetterAuthError(
 			"You are using the default secret. Please set `BETTER_AUTH_SECRET` in your environment variables or pass `secret` in your auth config.",
 		);

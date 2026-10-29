@@ -7,7 +7,11 @@ import type {
 	User,
 } from "better-auth";
 import { APIError } from "better-auth";
-import { createAuthEndpoint, sessionMiddleware } from "better-auth/api";
+import {
+	createAuthEndpoint,
+	createAuthMiddleware,
+	getAuthoritativeSessionFromCtx,
+} from "better-auth/api";
 import { mergeSchema } from "better-auth/db";
 import * as z from "zod";
 import {
@@ -83,6 +87,21 @@ export function subscription(options: SubscriptionOptions) {
 		options.schema,
 	);
 
+	// Entitlement reads use the authoritative session (not the signed cookie
+	// cache) and reject banned/impersonated sessions, matching business reads.
+	const authoritativeSessionMiddleware = createAuthMiddleware(async (ctx) => {
+		const session = await getAuthoritativeSessionFromCtx(ctx);
+		if (!session)
+			throw new APIError("UNAUTHORIZED", { message: "Sign in required" });
+		if ("banned" in session.user && session.user.banned)
+			throw new APIError("FORBIDDEN", { message: "Account is banned" });
+		if ("impersonatedBy" in session.session && session.session.impersonatedBy)
+			throw new APIError("FORBIDDEN", {
+				message: "End impersonation before reading subscriptions",
+			});
+		return { session };
+	});
+
 	return {
 		id: "subscription",
 		options,
@@ -146,7 +165,7 @@ export function subscription(options: SubscriptionOptions) {
 			),
 			listSubscriptionPlans: createAuthEndpoint(
 				"/subscriptions/plans",
-				{ method: "GET", requireHeaders: true, use: [sessionMiddleware] },
+				{ method: "GET", requireHeaders: true, use: [authoritativeSessionMiddleware] },
 				async (ctx) => {
 					const plans = await createSubscriptionService(
 						ctx.context.adapter,
@@ -162,7 +181,7 @@ export function subscription(options: SubscriptionOptions) {
 				{
 					method: "GET",
 					requireHeaders: true,
-					use: [sessionMiddleware],
+					use: [authoritativeSessionMiddleware],
 					query: z
 						.object({
 							referenceId: identifier.optional(),

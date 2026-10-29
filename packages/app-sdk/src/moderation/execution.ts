@@ -64,7 +64,7 @@ export function createModerationExecution(runtime: ModerationRuntime) {
 						break;
 					}
 					try {
-						await bounded(
+						const consentValid = await bounded(
 							runtime.options.boundary_timeout_ms,
 							() =>
 								runtime.options.validateConsent!(
@@ -85,6 +85,7 @@ export function createModerationExecution(runtime: ModerationRuntime) {
 								),
 							controller,
 						);
+						if (consentValid === false) verified = false;
 					} catch {
 						verified = false;
 					}

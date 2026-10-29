@@ -1597,6 +1597,55 @@ describe("base context creation", () => {
 			vi.unstubAllEnvs();
 		});
 
+		it("should throw error when default secret is set outside a test environment", async () => {
+			vi.stubEnv("BETTER_AUTH_SECRET", "");
+			vi.stubEnv("AUTH_SECRET", "");
+			const originalNodeEnv = process.env.NODE_ENV;
+
+			const { DEFAULT_SECRET } = await import("../utils/constants");
+
+			const expectedErrorMessage =
+				"You are using the default secret. Please set `BETTER_AUTH_SECRET` in your environment variables or pass `secret` in your auth config.";
+
+			// Runtimes such as Workers, Deno, or plain `node` may not set NODE_ENV;
+			// the default secret must still be rejected rather than silently accepted.
+			vi.doMock("@better-auth/core/env", async () => {
+				const actual = await vi.importActual("@better-auth/core/env");
+				return {
+					...actual,
+					isProduction: false,
+					isTest: () => false,
+				};
+			});
+
+			vi.resetModules();
+
+			const { createAuthContext } = await import("../context/create-context");
+			const { getAdapter } = await import("../db/adapter-kysely");
+
+			const initBaseNonProduction = async (
+				options: Partial<BetterAuthOptions> = {},
+			) => {
+				const opts: BetterAuthOptions = {
+					baseURL: "http://localhost:3000",
+					...options,
+				};
+				const adapter = await getAdapter(opts);
+				return createAuthContext(adapter, opts, () => "memory");
+			};
+
+			await expect(
+				initBaseNonProduction({
+					secret: DEFAULT_SECRET,
+				}),
+			).rejects.toThrow(expectedErrorMessage);
+
+			vi.doUnmock("@better-auth/core/env");
+			vi.resetModules();
+			process.env.NODE_ENV = originalNodeEnv;
+			vi.unstubAllEnvs();
+		});
+
 		it("should log a warning when secret is too short", async () => {
 			vi.stubEnv("BETTER_AUTH_SECRET", "");
 			vi.stubEnv("AUTH_SECRET", "");

@@ -16,6 +16,14 @@ import {
 } from "./moderation-fixtures";
 
 describe("moderation operation authorization", () => {
+	it("denies a false return from the authorize callback", async () => {
+		const test = await setup();
+		test.options.authorize = async () => false;
+		await expect(test.runtime.prepare(context, "authorize")).rejects.toThrow(
+			"Moderation authorization was denied",
+		);
+	});
+
 	it("keeps unsupported required shadow checks from denying enforced baseline permits", async () => {
 		const permits: boolean[] = [];
 		for (const shadow of [false, true]) {

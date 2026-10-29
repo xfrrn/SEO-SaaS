@@ -7,6 +7,10 @@ export const dynamic = "force-dynamic";
 /** Signed notifications recover purchases even when a customer closes the checkout tab. */
 export async function POST(request: Request) {
 	try {
+		const contentLength = Number(request.headers.get("content-length") ?? 0);
+		if (contentLength > 256 * 1024) {
+			return Response.json({ error: "Payload too large" }, { status: 413 });
+		}
 		const payments = getPayments();
 		if (!payments.webhook) return new Response(null, { status: 404 });
 		const receipt = await payments.webhook(request);

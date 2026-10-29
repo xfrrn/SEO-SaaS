@@ -113,7 +113,7 @@ export async function analyze(
 		!(input.stage === "input" && prepared.policy.allow_empty_input)
 	)
 		throw moderationError("INVALID_CONTENT", "Moderation content is required");
-	await bounded(
+	const contentValid = await bounded(
 		runtime.options.boundary_timeout_ms,
 		() =>
 			runtime.options.validateContent(
@@ -124,6 +124,11 @@ export async function analyze(
 			),
 		signal,
 	);
+	if (contentValid === false)
+		throw moderationError(
+			"INVALID_CONTENT",
+			"Moderation content validation was denied",
+		);
 	const restricted = await bounded(
 		prepared.policy.limits.detector_timeout_ms,
 		(inner) =>
