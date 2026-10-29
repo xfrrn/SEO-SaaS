@@ -47,12 +47,31 @@ regression test; payment/auth/webhook behavior must not regress (see `test-plan.
 
 ## P3 — hardening (schedule; many are documented defaults)
 
-L1 `sharp`, L2 `fast-uri`, L3 dev deps; L5 reset-timing constant-time floor; L9 token in
-callback URL (POST + hash fragment); L11 dynamic-role cache invalidation; L12 SSO domain
-ownership; L14 webhook body-size/rate limits + verify-before-call; L15 credits/subscription
-authoritative session; L16 strip internal keys from `publicOrder`; L17 revoke API keys on
-ban. L4/L6/L7/L8/L10/L13 are documented defaults — add docs/hardening config, not breaking
-changes.
+Applied 2026-10-29: **L1/L2/L3** dependency floors (`sharp`, `fast-uri`, `seroval`,
+`shell-quote`), **L5** password-reset constant-time floor, **L10** 2FA MAC constant-time
+compare, **L11** dynamic-role cache invalidation, **L15** credits/subscription
+authoritative session.
+
+Remaining recommendations (not code-changed this round):
+
+- **L4** 2FA not on alternate sign-in — document clearly, and consider a config flag to
+  require 2FA across all sign-in methods.
+- **L6** sign-up enumeration — enable the generic duplicate response by default or document.
+- **L7** password reset does not revoke sessions — enable `revokeSessionsOnPasswordReset`.
+- **L8** cookie-cache revocation delay — documented; keep sensitive ops on the authoritative
+  session.
+- **L9** reset token in callback URL — switch reset callback to POST + `#` fragment (or
+  hash-browser) to keep the token out of logs/referrer.
+- **L12** SSO domain squatting — reject duplicate/overlapping `domain` claims and prefer
+  routing only to `domainVerified` providers.
+- **L13** admin impersonation step-up — require a fresh-authentication assertion and always
+  audit-log impersonation.
+- **L14** payment webhook body-size/rate limits — add a request-body cap and rate limit to
+  the webhook route, and verify signature before outbound provider calls.
+- **L16** strip `checkoutKey`/`providerKey` from `publicOrder` — low value (SHA-256 digests,
+  no client endpoint); do alongside a deliberate type cleanup.
+- **L17** revoke API keys on ban — pass api-key adapter access into the media-engine ban
+  path, or document that hosts revoke keys independently.
 
 ---
 

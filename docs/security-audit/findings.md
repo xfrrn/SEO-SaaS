@@ -50,6 +50,24 @@ Assessed as intentional/documented design trade-offs (not code-changed — see n
 relevant finding): **M7** (`X-Forwarded-For` trust default), **M8** (fail-closed shared
 rate-limit bucket).
 
+### L-series hardening (2026-10-29)
+
+Applied:
+
+- **L1/L2/L3** dependency floors raised — `sharp` → `>=0.35.5`, `fast-uri` → `>=3.1.9`,
+  `seroval` → `>=1.6.3`, `shell-quote` → `>=1.11.0` in `pnpm-workspace.yaml`.
+- **L5** — `requestPasswordReset` now enforces a 500ms constant-time floor so
+  "email not found" and "email found" paths are not distinguishable by response time.
+- **L10** — 2FA trust-device MAC now compares via `constantTimeEqual`.
+- **L11** — the organization dynamic-role cache is invalidated on create/update/delete
+  role, so authorization decisions no longer read a stale snapshot.
+- **L15** — credits balance/ledger and subscription list reads use the authoritative
+  session (not the cookie cache) and reject banned/impersonated sessions.
+
+Not code-changed (documented as recommendations): **L4**, **L6**, **L7**, **L8**
+(documented defaults), and **L9**, **L12**, **L13**, **L14**, **L16**, **L17** (larger
+design changes or type-ripple risk) — see `remediation-plan.md`.
+
 Remaining L1–L17 are hardening items tracked in `remediation-plan.md`.
 
 ---
