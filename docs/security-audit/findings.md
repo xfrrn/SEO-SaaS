@@ -20,7 +20,7 @@ Verdict scale: **Confirmed** (code path + impact established), **Needs Validatio
 > review. The real issues cluster in **defaults that fail open**, **one authorization
 > invariant missing from a single endpoint**, and **stale dependency security floors**.
 
-## Fix status (2026-10-28, first remediation round)
+## Fix status (2026-10-28 → 2026-10-29, two remediation rounds)
 
 Applied and covered by regression tests:
 
@@ -29,13 +29,25 @@ Applied and covered by regression tests:
 - **H2** fixed — `updateMemberRole` now refuses to assign a role whose permissions the
   caller does not itself hold (mirrors `createOrgRole`/`updateOrgRole`).
 - **H3** fixed (dependency floors) — `node-forge` → `>=1.4.1`, `@xmldom/xmldom` →
-  `>=0.8.15`, `zod` → `^4.6.6` in `pnpm-workspace.yaml`; lockfile re-resolved.
+  `>=0.8.15`, `zod` → `^4.6.6` (also closes **M9**) in `pnpm-workspace.yaml`.
 - **M1** fixed — `enableSessionForAPIKeys` rejects permission-scoped keys and banned
   users instead of minting a full session.
 - **M2** fixed — `applyMediaEngineAction` now accepts the Admin plugin's
   `adminRoles`/`adminUserIds` and protects those administrators.
+- **M3** fixed — moderation `authorize`/`validateContent`/`validateConsent`/`erase`
+  callbacks now return `Promise<void | false>` and a `false` return is rejected at every
+  call site instead of being treated as success.
+- **M4** fixed — cleanup re-checks the legal-hold/restricted state inside the final
+  deletion transaction, so a record that becomes `legal_hold` during the erase window
+  survives.
+- **M6** fixed — the direct `id_token` sign-in path is rejected when the provider sets
+  `requiresIdTokenNonce` (no server-issued nonce can bind it on that path).
 
-Remaining (M3–M9, L1–L17) are tracked in `remediation-plan.md` for subsequent rounds.
+Assessed as intentional/documented design trade-offs (not code-changed — see note in the
+relevant finding): **M5** (stateless email-verification JWT replay window), **M7**
+(`X-Forwarded-For` trust default), **M8** (fail-closed shared rate-limit bucket).
+
+Remaining L1–L17 are hardening items tracked in `remediation-plan.md`.
 
 ---
 
