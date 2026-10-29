@@ -42,10 +42,13 @@ Applied and covered by regression tests:
   survives.
 - **M6** fixed — the direct `id_token` sign-in path is rejected when the provider sets
   `requiresIdTokenNonce` (no server-issued nonce can bind it on that path).
+- **M5** fixed — `verifyEmail` atomically claims each token via
+  `reserveVerificationValue`, so a leaked verification link cannot be replayed to
+  re-verify or re-mint a session.
 
 Assessed as intentional/documented design trade-offs (not code-changed — see note in the
-relevant finding): **M5** (stateless email-verification JWT replay window), **M7**
-(`X-Forwarded-For` trust default), **M8** (fail-closed shared rate-limit bucket).
+relevant finding): **M7** (`X-Forwarded-For` trust default), **M8** (fail-closed shared
+rate-limit bucket).
 
 Remaining L1–L17 are hardening items tracked in `remediation-plan.md`.
 
@@ -103,10 +106,10 @@ Remaining L1–L17 are hardening items tracked in `remediation-plan.md`.
 - **Fix:** re-assert the legal-hold/restricted state inside the final deletion transaction, or delete with a predicate that excludes currently-held records.
 
 ### M5 — Email-verification tokens are non-revocable bearer JWTs that mint sessions
-- **Verdict:** Confirmed (design) / exposure Needs Validation
-- **Files:** `packages/better-auth/src/api/routes/email-verification.ts:225-241,302-325,371-478`
-- **Data flow:** `verifyEmail` trusts a self-contained JWT and never checks a server-side row; the link is replayable until expiry, creates sessions even when `autoSignInAfterVerification` is false, and is not invalidated when the email changes.
-- **Fix:** bind the token to a single-use server-side verification record (consume atomically), or at minimum embed `userId` + a monotonic version and reject stale tokens.
+- **Verdict:** Confirmed (design) / exposure Needs Validation — **Fixed 2026-10-29**
+- **Files:** `packages/better-auth/src/api/routes/email-verification.ts`
+- **Data flow:** `verifyEmail` trusted a self-contained JWT and never checked a server-side row; the link was replayable until expiry, created sessions even when `autoSignInAfterVerification` was false, and was not invalidated when the email changed.
+- **Fix:** `verifyEmail` now atomically claims each token via `internalAdapter.reserveVerificationValue` (first-writer-wins replay tombstone keyed by `email-verification-replay:<sha256(token)>`, expiring with the JWT). A replayed link is rejected; secondary-storage-only verification falls back to a best-effort find-then-create.
 
 ### M6 — Direct `id_token` sign-in accepts a client-supplied nonce (replayable assertion)
 - **Verdict:** Needs Validation
