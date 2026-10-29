@@ -6,7 +6,11 @@ import type {
 	User,
 } from "better-auth";
 import { APIError } from "better-auth";
-import { createAuthEndpoint, sessionMiddleware } from "better-auth/api";
+import {
+	createAuthEndpoint,
+	createAuthMiddleware,
+	getAuthoritativeSessionFromCtx,
+} from "better-auth/api";
 import { mergeSchema } from "better-auth/db";
 import * as z from "zod";
 import { createCreditsSchema } from "./schema";
@@ -65,6 +69,22 @@ export function credits(options: CreditsOptions = {}) {
 		}
 	}
 
+	// Read routes expose financial balances, so use the authoritative session
+	// (not the signed cookie cache) and reject banned/impersonated sessions,
+	// matching the business plugin's read middleware.
+	const authoritativeSessionMiddleware = createAuthMiddleware(async (ctx) => {
+		const session = await getAuthoritativeSessionFromCtx(ctx);
+		if (!session)
+			throw new APIError("UNAUTHORIZED", { message: "Sign in required" });
+		if ("banned" in session.user && session.user.banned)
+			throw new APIError("FORBIDDEN", { message: "Account is banned" });
+		if ("impersonatedBy" in session.session && session.session.impersonatedBy)
+			throw new APIError("FORBIDDEN", {
+				message: "End impersonation before reading credits",
+			});
+		return { session };
+	});
+
 	return {
 		id: "credits",
 		options,
@@ -96,7 +116,7 @@ export function credits(options: CreditsOptions = {}) {
 				{
 					method: "GET",
 					requireHeaders: true,
-					use: [sessionMiddleware],
+					use: [authoritativeSessionMiddleware],
 					query: z.object({ referenceId: identifier.optional() }).optional(),
 				},
 				async (ctx) => {
@@ -115,7 +135,7 @@ export function credits(options: CreditsOptions = {}) {
 				{
 					method: "GET",
 					requireHeaders: true,
-					use: [sessionMiddleware],
+					use: [authoritativeSessionMiddleware],
 					query: z
 						.object({
 							referenceId: identifier.optional(),
