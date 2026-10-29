@@ -8,7 +8,13 @@ import {
 } from "./lifecycle-validation";
 import { bounded, canonical, digest, moderationError } from "./primitives";
 import type { ModerationRuntime } from "./runtime";
-import type { AttemptState, ModerationDecision, RecordKind } from "./types";
+import type {
+	AttemptState,
+	ModerationDecision,
+	ModerationTransaction,
+	RecordKind,
+	StoredRecord,
+} from "./types";
 
 const pageSchema = z
 	.object({
@@ -79,13 +85,21 @@ export function createModerationCleanup(runtime: ModerationRuntime) {
 		const input = cleanupSchema.parse(request);
 		const batchKey = await digest([input.cleanup_id, input.idempotency_key]);
 		const prepared = await runtime.prepare(input.context, "cleanup");
-		if (input.subject_id && input.subject_id !== input.context.subject_id)
-			await bounded(runtime.options.boundary_timeout_ms, () =>
-				runtime.options.authorize(
-					{ ...input.context, subject_id: input.subject_id! },
-					"cleanup",
-				),
+		if (input.subject_id && input.subject_id !== input.context.subject_id) {
+			const authorized = await bounded(
+				runtime.options.boundary_timeout_ms,
+				() =>
+					runtime.options.authorize(
+						{ ...input.context, subject_id: input.subject_id! },
+						"cleanup",
+					),
 			);
+			if (authorized === false)
+				throw moderationError(
+					"FORBIDDEN",
+					"Moderation authorization was denied",
+				);
+		}
 		const limit = boundedLimit(
 			input.limit,
 			prepared.policy.limits.max_page_size,
@@ -195,17 +209,21 @@ export function createModerationCleanup(runtime: ModerationRuntime) {
 							"ERASE_ADAPTER_MISSING",
 							"Private resource deletion requires a host adapter",
 						);
-					await bounded(runtime.options.boundary_timeout_ms, (signal) =>
-						runtime.options.erase!({
-							context: {
-								...input.context,
-								subject_id: candidate.subject_id ?? input.context.subject_id,
-							},
-							cleanup_id: input.cleanup_id,
-							resource_ref,
-							signal,
-						}),
+					const erasedResource = await bounded(
+						runtime.options.boundary_timeout_ms,
+						(signal) =>
+							runtime.options.erase!({
+								context: {
+									...input.context,
+									subject_id: candidate.subject_id ?? input.context.subject_id,
+								},
+								cleanup_id: input.cleanup_id,
+								resource_ref,
+								signal,
+							}),
 					);
+					if (erasedResource === false)
+						throw new Error("Moderation erase was denied");
 				}
 				erased.push(candidate);
 			} catch {
@@ -222,19 +240,29 @@ export function createModerationCleanup(runtime: ModerationRuntime) {
 				if (!batch)
 					throw moderationError("STATE_CONFLICT", "Cleanup batch disappeared");
 				if (batch.data.receipt) return batch.data.receipt;
-				for (const candidate of erased)
+				let removed = 0;
+				for (const candidate of erased) {
+					const record = await tx.get<Record<string, unknown>>(
+						candidate.kind,
+						candidate.key,
+					);
+					// Re-check after the external erase window: a record that became
+					// restricted (legal hold) must survive this deletion batch.
+					if (record && (await isRestrictedRecord(tx, record))) continue;
 					await tx.remove(candidate.kind, candidate.key);
+					removed++;
+				}
 				const receipt: CleanupReceipt = {
 					cleanup_id: input.cleanup_id,
 					status: failed
-						? erased.length
+						? removed
 							? "partial"
 							: "failed"
 						: plan.next_cursor || plan.restricted_exceptions
 							? "partial"
 							: "completed",
 					next_cursor: failed ? (input.cursor ?? null) : plan.next_cursor,
-					removed: erased.length,
+					removed,
 					failed,
 					restricted_exceptions: plan.restricted_exceptions,
 				};
@@ -322,27 +350,7 @@ async function planCleanup(
 			const attempt = record.attempt_id
 				? await tx.get<AttemptState>("attempt", record.attempt_id)
 				: null;
-			let restricted = hasRestrictedProjection(record.data);
-			if (
-				record.kind === "consent" &&
-				(await tx.get("event", `restricted_consent:${record.key}`))
-			)
-				restricted = true;
-			if (attempt) {
-				for (const reference of Object.values(attempt.data.stages)) {
-					if (
-						reference &&
-						(
-							await tx.get<ModerationDecision>(
-								"decision",
-								reference.decision_id,
-							)
-						)?.data.decision === "legal_hold"
-					)
-						restricted = true;
-				}
-			}
-			if (restricted) {
+			if (await isRestrictedRecord(tx, record)) {
 				restricted_exceptions++;
 				continue;
 			}
@@ -427,4 +435,35 @@ function hasRestrictedProjection(value: unknown): boolean {
 	)
 		return true;
 	return Object.values(object).some(hasRestrictedProjection);
+}
+
+/**
+ * A record is retained (excluded from ordinary cleanup) when its projection is
+ * restricted or when it belongs to an attempt currently under legal hold. This
+ * must be re-checked inside the final deletion transaction: a review or
+ * restricted-signal evaluation can record `legal_hold` after the cleanup plan was
+ * created but before the records are removed.
+ */
+async function isRestrictedRecord(
+	tx: ModerationTransaction,
+	record: StoredRecord<Record<string, unknown>>,
+): Promise<boolean> {
+	if (hasRestrictedProjection(record.data)) return true;
+	if (
+		record.kind === "consent" &&
+		(await tx.get("event", `restricted_consent:${record.key}`))
+	)
+		return true;
+	if (!record.attempt_id) return false;
+	const attempt = await tx.get<AttemptState>("attempt", record.attempt_id);
+	if (!attempt) return false;
+	for (const reference of Object.values(attempt.data.stages)) {
+		if (
+			reference &&
+			(await tx.get<ModerationDecision>("decision", reference.decision_id))
+				?.data.decision === "legal_hold"
+		)
+			return true;
+	}
+	return false;
 }

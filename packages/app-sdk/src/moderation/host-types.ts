@@ -31,7 +31,14 @@ export interface ModerationOptions {
 	boundary_timeout_ms: number;
 	/** Random server-only HMAC secret, at least 32 characters; never persisted. */
 	evidence_secret: string;
-	authorize(context: TrustedContext, permission: Permission): Promise<void>;
+	/**
+	 * Authorize the trusted context for a permission. Throw an error to deny, or
+	 * return `false`; a `false` return is treated as a denial, never as success.
+	 */
+	authorize(
+		context: TrustedContext,
+		permission: Permission,
+	): Promise<void | false>;
 	resolvePolicy(
 		context: TrustedContext,
 	): Promise<{ platform: PlatformPolicy; tenant?: TenantPolicy }>;
@@ -68,18 +75,21 @@ export interface ModerationOptions {
 		cleanup_id: string;
 		resource_ref: string;
 		signal: AbortSignal;
-	}) => Promise<void>;
-	/** Host verifies asset ownership, revision, current context and private references. */
+	}) => Promise<void | false>;
+	/**
+	 * Host verifies asset ownership, revision, current context and private
+	 * references. Throw an error to reject, or return `false`.
+	 */
 	validateContent(
 		context: TrustedContext,
 		items: ContentItem[],
 		content_revision: string,
 		context_digest: string,
-	): Promise<void>;
+	): Promise<void | false>;
 	validateConsent?: (
 		context: TrustedContext,
 		consent: ConsentDeclaration,
 		assets: { item_id: string; revision: string; asset_ref: string }[],
 		operation: Operation,
-	) => Promise<void>;
+	) => Promise<void | false>;
 }
