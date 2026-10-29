@@ -309,6 +309,38 @@ describe("Email Verification", () => {
 		expect(res.data?.status).toBe(true);
 	});
 
+	it("should reject a replayed verification token", async () => {
+		let token = "";
+		const { auth, client, testUser } = await getTestInstance({
+			emailAndPassword: {
+				enabled: true,
+				requireEmailVerification: true,
+			},
+			emailVerification: {
+				sendOnSignUp: false,
+				async sendVerificationEmail({ token: verificationToken }) {
+					token = verificationToken;
+				},
+			},
+		});
+		await auth.api.sendVerificationEmail({
+			body: {
+				email: testUser.email,
+			},
+		});
+
+		const first = await client.verifyEmail({
+			query: { token },
+		});
+		expect(first.data?.status).toBe(true);
+
+		const replay = await client.verifyEmail({
+			query: { token },
+		});
+		expect(replay.error?.status).toBe(401);
+		expect(replay.error?.message).toBe("Verification token was already used");
+	});
+
 	it("should redirect to callback", async () => {
 		let token = "";
 		const { auth, client, testUser } = await getTestInstance({

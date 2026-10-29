@@ -42,6 +42,50 @@ export async function createEmailVerificationToken(
 	return token;
 }
 
+async function sha256Hex(value: string) {
+	const bytes = await crypto.subtle.digest(
+		"SHA-256",
+		new TextEncoder().encode(value),
+	);
+	return Array.from(new Uint8Array(bytes), (byte) =>
+		byte.toString(16).padStart(2, "0"),
+	).join("");
+}
+
+/**
+ * Atomically claim an email-verification token for single use. Returns `true`
+ * the first time a token is seen and `false` when it has already been used, so
+ * a leaked verification link cannot be replayed to re-verify or re-mint a
+ * session within its expiry window.
+ */
+async function reserveEmailVerificationReplay(
+	ctx: GenericEndpointContext,
+	token: string,
+	expiresAt: Date,
+): Promise<boolean> {
+	const digest = await sha256Hex(token);
+	const identifier = `email-verification-replay:${digest}`;
+	try {
+		return await ctx.context.internalAdapter.reserveVerificationValue({
+			identifier,
+			value: "used",
+			expiresAt,
+		});
+	} catch {
+		// Secondary-storage-only verification cannot enforce the atomic
+		// first-writer-wins gate. Fall back to a best-effort find-then-create.
+		const existing =
+			await ctx.context.internalAdapter.findVerificationValue(identifier);
+		if (existing) return false;
+		await ctx.context.internalAdapter.createVerificationValue({
+			identifier,
+			value: "used",
+			expiresAt,
+		});
+		return true;
+	}
+}
+
 /**
  * A function to send a verification email to the user
  */
@@ -321,6 +365,19 @@ export const verifyEmail = createAuthEndpoint(
 			requestType: z.string().optional(),
 		});
 		const parsed = schema.parse(jwt.payload);
+		// Single-use: atomically claim this token. A replayed link must not
+		// re-verify or re-mint a session within its expiry window.
+		const replayExpiresAt = new Date(
+			(typeof jwt.payload.exp === "number"
+				? jwt.payload.exp
+				: Math.floor(Date.now() / 1000) + 3600) * 1000,
+		);
+		if (!(await reserveEmailVerificationReplay(ctx, token, replayExpiresAt))) {
+			return redirectOnError({
+				code: BASE_ERROR_CODES.INVALID_TOKEN.code,
+				message: "Verification token was already used",
+			});
+		}
 		const user = await ctx.context.internalAdapter.findUserByEmail(
 			parsed.email,
 		);
