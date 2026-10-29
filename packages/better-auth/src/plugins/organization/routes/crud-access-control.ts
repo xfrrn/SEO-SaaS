@@ -10,6 +10,7 @@ import type { AccessControl } from "../../access";
 import { orgSessionMiddleware } from "../call";
 import { ORGANIZATION_ERROR_CODES } from "../error-codes";
 import { hasPermission } from "../has-permission";
+import { cacheAllRoles } from "../permission";
 import type { Member, OrganizationRole } from "../schema";
 import type { OrganizationOptions } from "../types";
 
@@ -266,6 +267,7 @@ export const createOrgRole = <O extends OrganizationOptions>(options: O) => {
 					...additionalFields,
 				},
 			});
+			cacheAllRoles.delete(organizationId);
 
 			const data = {
 				...newRoleInDB,
@@ -520,6 +522,7 @@ export const deleteOrgRole = <O extends OrganizationOptions>(options: O) => {
 					condition,
 				],
 			});
+			cacheAllRoles.delete(organizationId);
 
 			return ctx.json({
 				success: true,
@@ -1086,6 +1089,7 @@ export const updateOrgRole = <O extends OrganizationOptions>(options: O) => {
 				],
 				update,
 			});
+			cacheAllRoles.delete(organizationId);
 
 			// -----
 			// Return the updated role

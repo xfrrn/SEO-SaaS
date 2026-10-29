@@ -13,7 +13,7 @@ import {
 	expireCookie,
 	setSessionCookie,
 } from "../../cookies";
-import { symmetricEncrypt } from "../../crypto";
+import { constantTimeEqual, symmetricEncrypt } from "../../crypto";
 import { generateRandomString } from "../../crypto/random";
 import { mergeSchema } from "../../db/schema";
 import { shouldRequirePassword, validatePassword } from "../../utils/password";
@@ -471,7 +471,7 @@ export const twoFactor = <O extends TwoFactorOptions>(options?: O) => {
 									`${data.user.id}!${trustIdentifier}`,
 								);
 
-								if (token === expectedToken) {
+								if (constantTimeEqual(token, expectedToken)) {
 									// HMAC is valid; verify the server-side record
 									const verificationRecord =
 										await ctx.context.internalAdapter.findVerificationValue(
