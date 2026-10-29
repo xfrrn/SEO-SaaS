@@ -1177,6 +1177,34 @@ describe("Google Provider — multiple client IDs", async () => {
 		expect(res.error?.status).toBe(401);
 	});
 
+	it("rejects the direct id_token path when nonce binding is required", async () => {
+		const idToken = await signIdToken(webClientId);
+		const { client, auth } = await getTestInstance(
+			{
+				socialProviders: {
+					google: {
+						clientId: webClientId,
+						clientSecret: "test-secret",
+					},
+				},
+			},
+			{ disableTestUser: true },
+		);
+		const context = await auth.$context;
+		const googleProvider = context.socialProviders.find(
+			(provider) => provider.id === "google",
+		)!;
+		googleProvider.requiresIdTokenNonce = true;
+
+		const res = await client.signIn.social({
+			provider: "google",
+			idToken: { token: idToken },
+		});
+
+		expect(res.error?.status).toBe(400);
+		expect(res.error?.code).toBe(BASE_ERROR_CODES.ID_TOKEN_NOT_SUPPORTED.code);
+	});
+
 	it("returns 401 over HTTP when a verified profile resolves an invalid account subject", async () => {
 		const idToken = await signIdToken(webClientId);
 		const { auth, client } = await getTestInstance(

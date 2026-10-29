@@ -285,6 +285,19 @@ export const signInSocial = <O extends BetterAuthOptions>() =>
 						BASE_ERROR_CODES.ID_TOKEN_NOT_SUPPORTED,
 					);
 				}
+				// A provider that requires id_token nonce binding must use the
+				// redirect flow: the direct id_token path has no server-issued
+				// nonce, so the client-supplied nonce cannot bind the token.
+				if (provider.requiresIdTokenNonce) {
+					c.context.logger.error(
+						"Provider requires id_token nonce binding; use the redirect flow",
+						{ provider: c.body.provider },
+					);
+					throw APIError.from(
+						"BAD_REQUEST",
+						BASE_ERROR_CODES.ID_TOKEN_NOT_SUPPORTED,
+					);
+				}
 				const { token, nonce } = c.body.idToken;
 				const valid = await verifyProviderIdToken(provider, token, nonce, c);
 				if (!valid) {
