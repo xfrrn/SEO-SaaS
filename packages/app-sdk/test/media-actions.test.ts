@@ -127,6 +127,7 @@ it("protects administrators configured via adminRoles or adminUserIds from enfor
 			password: "password123",
 			name: "Media Test",
 		});
+		if (!data) throw new Error("signUp did not return a user");
 		if (role) {
 			await adapter.update({
 				model: "user",
