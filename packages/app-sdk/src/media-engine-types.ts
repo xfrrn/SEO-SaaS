@@ -24,6 +24,7 @@ export const mediaWebhookSecretSchema = z.union([
 export type MediaWebhookSecret = z.infer<typeof mediaWebhookSecretSchema>;
 
 export const mediaAssetSchema = z.object({
+	environment: z.enum(["live", "sandbox"]).optional(),
 	inspection_error: z.string().optional(),
 	moderation_error: z.string().optional(),
 	deletion_error: z.string().optional(),
@@ -70,7 +71,38 @@ export const mediaRelationSchema = z.object({
 	position: z.number().int().nonnegative(),
 	step_id: z.string().optional(),
 });
+/** Immutable template audio and the Engine's fixed, video-length replacement recipe. */
+export const mediaSoundtrackSchema = z.object({
+	asset_id: z.string().min(1),
+	content_revision: z.string().min(1),
+	start_seconds: z.literal(0),
+	volume: z.literal(1),
+	loop: z.literal(true),
+	duration: z.literal("video"),
+	audio_mode: z.literal("replace"),
+});
+export const mediaDerivativeSchema = z
+	.object({
+		environment: z.enum(["live", "sandbox"]).optional(),
+		id: z.string().min(1),
+		generation_id: z.string().min(1),
+		variant: z.enum(["muted", "soundtrack"]),
+		asset_id: z.string().min(1),
+		status: z.enum(["pending", "checking", "ready", "failed", "unavailable"]),
+		reason_code: z.string(),
+		source_video_asset_id: z.string().min(1),
+		source_video_content_revision: z.string().min(1),
+		rules_version: z.literal(1),
+		soundtrack: mediaSoundtrackSchema.nullable().optional(),
+		expires_at: z.iso.datetime({ offset: true }).nullable().optional(),
+	})
+	.refine((value) =>
+		value.variant === "soundtrack" ? !!value.soundtrack : !value.soundtrack,
+	);
+export type MediaSoundtrack = z.infer<typeof mediaSoundtrackSchema>;
+export type MediaDerivative = z.infer<typeof mediaDerivativeSchema>;
 export const mediaGenerationSchema = z.object({
+	environment: z.enum(["live", "sandbox"]).optional(),
 	id: z.string().min(1),
 	external_user_id: z.string(),
 	external_request_id: z.string(),
@@ -103,6 +135,7 @@ export const mediaGenerationSchema = z.object({
 	mock: z.boolean(),
 	assets: z.array(mediaRelationSchema),
 	output: z.record(z.string(), z.unknown()).optional(),
+	soundtrack: mediaSoundtrackSchema.nullable().optional(),
 	error: z.string().optional(),
 	created_at: z.string().optional(),
 });

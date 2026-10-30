@@ -33,6 +33,8 @@ SDK 0.5.1 adds optional Engine asset retention metadata and distinct expired-fil
 
 SDK 0.5.2 preserves optional template family/variant metadata in list/detail responses. Each variant still submits its own template ID and immutable version; family membership never grants access or merges workflows. See docs/media-engine-usage.md.
 
+SDK 0.5.4 supports per-product Waffo IDs in immutable `limits.payments.waffo.productId`; checkout and payment verification read the saved order snapshot. Explicit null disables the legacy global fallback. See docs/sdk-0.5.4.md.
+
 ## Commands
 
 - ALWAYS use `pnpm` (never npm, yarn, or bun)
@@ -114,3 +116,7 @@ When a flow must synthesize an email, use `createPlaceholderEmail` with a stable
 - DO NOT COMMIT unless the user explicitly asks
 - Conventional Commits: `feat(scope):`, `fix(scope):`, `docs:`, `chore:`. Use `!` for breaking changes (e.g. `feat(auth)!:`)
 - PRs target `main`
+
+SDK 0.5.5 adds Waffo consumed hosted-session inspection through native checkout reconciliation, with optional HTTP boundary and fail-closed status handling. See docs/sdk-0.5.5.md.
+
+SDK 0.5.7 preserves optional immutable Engine soundtracks and adds task-scoped soundtrack/derivative delivery. Hosts merge media; the SDK does not execute FFmpeg or add generation/credit settlement. See docs/sdk-0.5.7.md.

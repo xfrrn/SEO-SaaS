@@ -66,6 +66,22 @@ async function assertPluginConsumers(stage) {
 	assert.equal(typeof mediaEntry.verifyMediaEngineNotification, "function");
 	assert.equal(typeof mediaEntry.applyMediaEngineAction, "function");
 	assert.equal(typeof mediaEntry.withCreditsTransaction, "function");
+	const delivery = mediaEntry.createMediaEngineClient({
+		base_url: "https://engine.example",
+		api_key: "packaging-only-key",
+	});
+	for (const method of [
+		"soundtrackURL",
+		"derivatives",
+		"prepareDerivative",
+		"completeDerivative",
+		"derivativeURL",
+	])
+		assert.equal(
+			typeof delivery[method],
+			"function",
+			`Missing media delivery method ${method}`,
+		);
 	const programmaticRuntime = join(stage, "programmatic-consumer.mjs");
 	await writeFile(
 		programmaticRuntime,

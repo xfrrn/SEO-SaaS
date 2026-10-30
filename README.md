@@ -1,5 +1,7 @@
 # Auth SDK
 
+SDK 0.5.7 增加中台成片配乐快照、任务专属音频授权和静音/原声衍生成片客户端；不在 SDK 执行合成或重复结算积分，见 [版本说明](docs/sdk-0.5.7.md)。
+
 基于 Better Auth 的可修改、可测试 SDK。对外使用 `@app/auth-sdk`，保留原生认证、插件、数据库适配器和支付实现。仓库同时提供 `apps/dashboard` 管理后台，使用已有 SDK 管理用户、套餐、订单、会员、积分和操作记录。
 
 内容审核插件已提供 `@app/auth-sdk/moderation` 服务端入口：分层检测、完整操作授权、回流、复核与脱敏证据导出。接入与宿主适配器要求见 [使用说明](./docs/moderation-usage.md)，目标及验收边界见 [设计文档](./docs/moderation-design.md)。专用身份/版权/儿童安全服务需另行接入，能力缺口拒绝放行。
@@ -58,7 +60,7 @@ Dashboard 通过 `PAYMENT_PROVIDER=stripe`、`paypal` 或 `waffo` 选择收款�
 pnpm pack:sdk
 ```
 
-当前 SDK 版本为 **0.5.0**，新增原生积分商品购买策略、并发资格占用和订单报价，见 [版本说明](./docs/sdk-0.5.0.md) 和 [中台接入](./docs/media-engine-usage.md)。产物为 **`dist/auth-sdk.tgz`**。其中包含本仓库构建的认证核心、Kysely/内存适配器、i18n、API Key、Redis 存储、MCP 及其 OAuth Provider 依赖，以及通用订阅、credits、business、Stripe 及 PayPal 包，保留你的本地修改。复制到使用方项目的 `vendor/` 后安装：
+当前 SDK 版本为 **0.5.4**，支持按不可变商品版本绑定 Waffo 商品 ID，见 [版本说明](./docs/sdk-0.5.4.md)。原生积分商品购买策略、并发资格占用和订单报价见 [0.5.0](./docs/sdk-0.5.0.md)，媒体能力见 [中台接入](./docs/media-engine-usage.md)。产物为 **`dist/auth-sdk.tgz`**。其中包含本仓库构建的认证核心、Kysely/内存适配器、i18n、API Key、Redis 存储、MCP 及其 OAuth Provider 依赖，以及通用订阅、credits、business、Stripe、Waffo 和 PayPal 包，保留你的本地修改。复制到使用方项目的 `vendor/` 后安装：
 
 ```bash
 pnpm add ./vendor/auth-sdk.tgz
@@ -445,3 +447,5 @@ Business 可通过 `business({ providers, monitor: createMonitorOptions({ env: p
 配置、浏览器接入、接口权限及补发期限详见 [SDK 监控接入](./packages/app-sdk/README.md#可信业务监控) 与 [Dashboard 说明](./apps/dashboard/README.md#监控接入)。常驻任务要求持续运行的 Node 服务；其他宿主可由自己的任务调度调用仅服务端可用的 `auth.api.runMonitorDelivery()`。
 
 独立安装包与真实 Collector 的可重复验证：先 `pnpm build:sdk`，再设置 `MONITOR_COLLECTOR_PATH` 指向独立接收服务目录，运行 `pnpm test:monitor:integration`。测试复用 dashboard 的 Playwright；Windows 默认使用已安装的 Chrome，其他环境使用 Playwright Chromium，也可通过 PLAYWRIGHT_CHANNEL 指定。测试使用临时业务库、临时 Collector 库和随机测试凭证，在真实浏览器加载独立安装的 Monitor 包，验证身份存储读取失败时，浏览器事件及注册/付款事件的 visitor/session ID 与归因仍然一致，并验证 `received_via: 'server'`、丢失本地确认后的去重恢复以及仅 Web API 环境的服务端导入。支付商户沙箱验收仍需对应商户的测试凭据和可接收通知的地址。
+
+SDK 0.5.5 adds Waffo consumed hosted-session inspection through native checkout reconciliation, with optional HTTP boundary and fail-closed status handling. See docs/sdk-0.5.5.md.

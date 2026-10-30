@@ -1,16 +1,20 @@
-import type { BusinessPaymentProvider } from "@app/business";
+import type { BusinessOrder, BusinessPaymentProvider } from "@app/business";
 import { appendQueryParams } from "@better-auth/core/utils/url";
 import type { TaxCategory, WaffoPancake } from "@waffo/pancake-ts";
+import { inspectWaffoCheckout } from "./checkout-state";
 
 /** Server-owned Waffo product, store and environment; the product must be one-time. */
 export interface WaffoBusinessProviderOptions {
 	client: WaffoPancake;
 	storeId: string;
-	productId: string;
+	/** Legacy fallback for product snapshots without a Waffo binding. */
+	productId?: string;
 	environment: "test" | "prod";
 	taxCategory: TaxCategory;
 	/** Absolute HTTPS URL; Waffo's payment channel does not accept HTTP loopback. */
 	returnURL: string;
+	/** Optional HTTP boundary for the hosted cashier's read-only session inspection. */
+	fetch?: typeof fetch;
 }
 
 function currencyDigits(currency: string) {
@@ -81,14 +85,42 @@ export function createWaffoBusinessProvider(
 		redirect.searchParams.has("reference")
 	)
 		throw new Error("Waffo returnURL must be HTTPS without orderId/reference");
-	if (
-		!options.storeId ||
-		!options.productId ||
-		!["test", "prod"].includes(options.environment)
-	)
-		throw new Error("Waffo requires a store, product and explicit environment");
+	if (!options.storeId || !["test", "prod"].includes(options.environment))
+		throw new Error("Waffo requires a store and explicit environment");
+	function productIdFor(order: BusinessOrder) {
+		const payments = order.product.limits.payments;
+		if (
+			payments !== undefined &&
+			(!payments || typeof payments !== "object" || Array.isArray(payments))
+		)
+			throw new Error("Invalid Waffo product binding");
+		const binding = payments?.waffo;
+		if (
+			binding !== undefined &&
+			(!binding || typeof binding !== "object" || Array.isArray(binding))
+		)
+			throw new Error("Invalid Waffo product binding");
+		// An explicit null clears a binding; only legacy snapshots use the global fallback.
+		const id = binding === undefined ? options.productId : binding.productId;
+		if (
+			typeof id !== "string" ||
+			id.length > 128 ||
+			!/^PROD_[A-Za-z0-9]+$/.test(id)
+		)
+			throw new Error("Waffo product ID is not configured or invalid");
+		return id;
+	}
 	return {
+		inspectCheckout(order, inspection) {
+			return inspectWaffoCheckout(
+				options,
+				order,
+				productIdFor(order),
+				inspection?.closeIfUnpaid,
+			);
+		},
 		async createCheckout(order) {
+			const productId = productIdFor(order);
 			const amount = displayAmount(order.amount, order.currency);
 			const remaining = Math.floor(
 				(order.expiresAt.getTime() - Date.now()) / 1000,
@@ -106,11 +138,11 @@ export function createWaffoBusinessProvider(
 				} | null;
 			}>({
 				query: `query ($id: String!) { onetimeProduct(id: $id) { id status store { id } } }`,
-				variables: { id: options.productId },
+				variables: { id: productId },
 			});
 			if (
 				product.errors?.length ||
-				product.data?.onetimeProduct?.id !== options.productId ||
+				product.data?.onetimeProduct?.id !== productId ||
 				product.data.onetimeProduct.store.id !== options.storeId ||
 				product.data.onetimeProduct.status !== "active"
 			)
@@ -119,7 +151,7 @@ export function createWaffoBusinessProvider(
 				);
 			const session = await options.client.checkout.createSession(
 				{
-					productId: options.productId,
+					productId,
 					currency: order.currency,
 					priceSnapshot: { amount, taxCategory: options.taxCategory },
 					orderMerchantExternalId: order.id,
@@ -146,6 +178,7 @@ export function createWaffoBusinessProvider(
 			return { providerOrderId: session.sessionId, url: url.href };
 		},
 		async verifyPayment({ order, reference }) {
+			const productId = productIdFor(order);
 			if (!order.providerOrderId || reference !== order.providerOrderId)
 				throw new Error("Waffo reference does not match the saved checkout");
 			displayAmount(order.amount, order.currency);
@@ -176,7 +209,7 @@ export function createWaffoBusinessProvider(
 				remote.status !== "completed" ||
 				remote.testMode !== (options.environment === "test") ||
 				remote.store.id !== options.storeId ||
-				remote.onetimeProduct.id !== options.productId ||
+				remote.onetimeProduct.id !== productId ||
 				price?.currency !== order.currency ||
 				!Number.isFinite(paidAt.getTime()) ||
 				minorAmount(price.subtotal, order.currency) !== BigInt(order.amount) ||

@@ -1,30 +1,33 @@
 import * as z from "zod";
+import { createMediaDeliveryClient } from "./media-engine-delivery";
 import type {
 	MediaUserContext,
 	MediaWebhookSecret,
 } from "./media-engine-types";
 import {
+	mediaActionEventSchema,
 	mediaAssetSchema,
 	mediaEventSchema,
 	mediaGenerationSchema,
-	mediaActionEventSchema,
 	mediaNotificationSchema,
 	mediaWebhookSecretSchema,
 } from "./media-engine-types";
 
-export type * from "./media-engine-types";
-export {
-	mediaAssetSchema,
-	mediaEventSchema,
-	mediaGenerationSchema,
-	mediaActionEventSchema,
-	mediaNotificationSchema,
-	mediaWebhookSecretSchema,
-} from "./media-engine-types";
 export {
 	applyMediaEngineAction,
 	mediaEngineActionReceiptSchema,
 } from "./media-engine-actions";
+export type * from "./media-engine-types";
+export {
+	mediaActionEventSchema,
+	mediaAssetSchema,
+	mediaDerivativeSchema,
+	mediaEventSchema,
+	mediaGenerationSchema,
+	mediaNotificationSchema,
+	mediaSoundtrackSchema,
+	mediaWebhookSecretSchema,
+} from "./media-engine-types";
 
 function failure(code: string, status?: number) {
 	return Object.assign(new Error(code), { code, status });
@@ -78,6 +81,8 @@ export function createMediaEngineClient(config: {
 	fetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 	timeout_ms?: number;
 	max_response_bytes?: number;
+	/** Pin the server-side application environment before any other API call. */
+	expected_environment?: "live" | "sandbox";
 }) {
 	const origin = new URL(config.base_url);
 	if (
@@ -107,6 +112,29 @@ export function createMediaEngineClient(config: {
 		.max(8388608)
 		.parse(config.max_response_bytes ?? 1048576);
 	const transport = config.fetch ?? globalThis.fetch;
+	const expected = config.expected_environment;
+	if (expected !== undefined && !["live", "sandbox"].includes(expected))
+		throw failure("MEDIA_ENGINE_ENVIRONMENT_MISMATCH");
+	const applicationSchema = z.object({
+		id: z.string().min(1),
+		user_scoped: z.boolean(),
+		media_permissions: z.array(z.string()),
+		environment: z.enum(["live", "sandbox"]).optional(),
+	});
+	let identityCheck: Promise<void> | undefined;
+	function checkEnvironment(value: unknown) {
+		if (!expected || !value || typeof value !== "object") return;
+		if (
+			"id" in value &&
+			(("environment" in value ? value.environment : undefined) ?? "live") !==
+				expected
+		)
+			throw failure("MEDIA_ENGINE_ENVIRONMENT_MISMATCH");
+		if ("items" in value && Array.isArray(value.items))
+			value.items.forEach(checkEnvironment);
+		if ("asset" in value) checkEnvironment(value.asset);
+		if ("derivative" in value) checkEnvironment(value.derivative);
+	}
 	async function request<T>(
 		method: string,
 		path: string,
@@ -115,6 +143,15 @@ export function createMediaEngineClient(config: {
 		body?: unknown,
 		key?: string,
 	) {
+		if (expected && path !== "/v1/application") {
+			identityCheck ??= request(
+				"GET",
+				"/v1/application",
+				undefined,
+				applicationSchema,
+			).then(() => {});
+			await identityCheck;
+		}
 		const headers: Record<string, string> = {
 			Authorization: `Bearer ${config.api_key}`,
 			"Content-Type": "application/json",
@@ -167,11 +204,13 @@ export function createMediaEngineClient(config: {
 				response.status,
 			);
 		}
-		try {
-			return schema.parse(result);
-		} catch {
+		const parsed = schema.safeParse(result);
+		if (!parsed.success) {
 			throw failure("MEDIA_ENGINE_CONTRACT_MISMATCH");
 		}
+		if (/^\/v1\/(application|assets|generations)(\/|\?|$)/.test(path))
+			checkEnvironment(parsed.data);
+		return parsed.data;
 	}
 	const assetPath = (id: string) =>
 		`/v1/assets/${encodeURIComponent(identifier.parse(id))}`;
@@ -186,6 +225,7 @@ export function createMediaEngineClient(config: {
 				.map(([key, value]) => [key, String(value)]),
 		).toString();
 	return {
+		...createMediaDeliveryClient(request, jobPath, identifier),
 		enforcementAction: (context: MediaUserContext, id: string) =>
 			request(
 				"GET",
@@ -207,16 +247,7 @@ export function createMediaEngineClient(config: {
 			),
 		/** Discover application identity through the authenticated connection, without a fourth env key. */
 		application: () =>
-			request(
-				"GET",
-				"/v1/application",
-				undefined,
-				z.object({
-					id: z.string().min(1),
-					user_scoped: z.boolean(),
-					media_permissions: z.array(z.string()),
-				}),
-			),
+			request("GET", "/v1/application", undefined, applicationSchema),
 		template: (context: MediaUserContext, id: string) =>
 			request(
 				"GET",
@@ -393,6 +424,7 @@ export async function verifyMediaEngineNotification(input: {
 	now_ms?: number;
 	tolerance_ms?: number;
 	max_bytes?: number;
+	expected_environment?: "live" | "sandbox";
 }) {
 	const signing = mediaWebhookSecretSchema.safeParse(input.secret);
 	if (!signing.success || input.body.byteLength > (input.max_bytes ?? 1048576))
@@ -452,6 +484,12 @@ export async function verifyMediaEngineNotification(input: {
 		(event.event !== "moderation.action" && !event.external_request_id)
 	)
 		throw failure("MEDIA_WEBHOOK_BINDING_MISMATCH");
+	if (
+		input.expected_environment &&
+		(("environment" in event ? event.environment : undefined) ?? "live") !==
+			input.expected_environment
+	)
+		throw failure("MEDIA_ENGINE_ENVIRONMENT_MISMATCH");
 	return event;
 }
 

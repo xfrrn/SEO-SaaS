@@ -9,6 +9,20 @@ const key = z
 	.min(1)
 	.max(100)
 	.regex(/^[a-z0-9][a-z0-9_-]*$/);
+const paymentBindings = z
+	.object({
+		waffo: z
+			.object({
+				productId: z
+					.string()
+					.max(128)
+					.regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/)
+					.nullable(),
+			})
+			.strict()
+			.optional(),
+	})
+	.catchall(z.json());
 
 /** Validate a complete new product version; zero means the key must not exist. */
 export const saveProductSchema = z
@@ -26,7 +40,20 @@ export const saveProductSchema = z
 		credits: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).default(0),
 		membershipDays: positiveInteger.max(36_500).nullable().default(null),
 		creditValidityDays: positiveInteger.max(36_500).nullable().default(null),
-		limits: z.record(z.string(), z.json()).default({}),
+		limits: z
+			.record(z.string(), z.json())
+			.default({})
+			.superRefine((limits, ctx) => {
+				if (
+					limits.payments !== undefined &&
+					!paymentBindings.safeParse(limits.payments).success
+				)
+					ctx.addIssue({
+						code: "custom",
+						message: "Invalid payment product bindings",
+						path: ["payments"],
+					});
+			}),
 		published: z.boolean().default(false),
 	})
 	.superRefine((value, ctx) => {

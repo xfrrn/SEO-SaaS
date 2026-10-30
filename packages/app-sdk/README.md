@@ -1,5 +1,7 @@
 # 认证与支付 SDK
 
+0.5.7 保留任务和签名通知中的可选 soundtrack，并提供 soundtrackURL / derivatives / prepareDerivative / completeDerivative / derivativeURL。配乐不通过普通管理员素材 URL 读取，合成由消费网站执行，见 [交付合同](../../docs/sdk-0.5.7.md)。
+
 `@app/auth-sdk` 统一导出 Better Auth 服务端、客户端插件、React、Next.js、通用订阅、credits、组合业务、Stripe 和 PayPal 功能，保持各功能包的参数、返回值和类型推导。
 
 0.4.0 新增服务端 `@app/auth-sdk/media-engine` 客户端与验签、审核动作应用/回执，原生 `@app/credits` 0.2.0 增加冻结、结算、释放与真实宿主事务桥接。新网站采用中台接入，旧本地执行入口保留兼容；见 [使用合同](../../docs/media-engine-usage.md) 和 [版本说明](../../docs/sdk-0.4.0.md)。
@@ -1032,7 +1034,7 @@ const waffo = createWaffoBusinessProvider({
     privateKey: process.env.WAFFO_PRIVATE_KEY!,
   }),
   storeId: process.env.WAFFO_STORE_ID!,
-  productId: process.env.WAFFO_PRODUCT_ID!,
+  productId: process.env.WAFFO_PRODUCT_ID, // 可选：只供未保存商品级绑定的旧快照兜底
   environment: "test", // 上线用 prod，并更换为正式环境的商户 API Key 私钥
   taxCategory: TaxCategory.SaaS,
   returnURL: `${process.env.APP_ORIGIN!}/payment/return`, // 必须 HTTPS
@@ -1044,7 +1046,7 @@ export const paymentProviders = { waffo };
 
 这三个适配器销售一次性商品：积分、指定天数会员或组合套餐；会员商品不等于自动续费订阅。Stripe 在创建 checkout 时要求订单至少剩余 30 分钟，建议 `orderTtlMs: 60 * 60_000`，剩余不足时应创建新购买操作。PayPal 在捕获前回查归属和金额，并使用原订单期限及稳定幂等键；已完成付款允许过期后对账。PayPal 按支持币种转换最小单位，HUF/TWD 要求整单位价格。现成适配器未实现 `verifyRefund`，退款核对需另接可信退款查询；不提供发起退款接口。
 
-Waffo 需要指定已有的活跃一次性商品，适配器核对它属于指定店铺，避免误用自动扣款商品。商品 ID 在服务端配置；本地目录可共用一个 Waffo 商品，价格由已保存订单通过 `priceSnapshot` 指定。上线前需完成 Waffo 商户审核、发布正式商品并配置对应环境的 webhook。测试和生产使用不同 API Key 私钥；不要将私钥下发浏览器。
+Waffo 需要已有的活跃一次性商品，适配器核对它属于指定店铺，避免误用自动扣款商品。每个本地商品可由管理员在不可变版本的 `limits.payments.waffo.productId` 保存对应 `PROD_...` ID；结账与付款核验都读取已存订单的 `product` 快照，不读取最新版本。设为 `null` 明确清除绑定，此商品不得回退到全局商品。只有快照完全没有 `waffo` 绑定时，才兼容使用可选 `options.productId`。缺失或非法 ID 在发起支付请求前明确报错，不发起网络调用；本地后台应在创建订单前同样提示未配置。价格仍由已保存订单通过 `priceSnapshot` 指定。上线前需完成 Waffo 商户审核、发布正式商品并配置对应环境的 webhook。测试和生产使用不同 API Key 私钥；不要将私钥下发浏览器。
 
 Waffo 当前 SDK 使用**税前显示金额字符串**，已移除 `taxIncluded`。适配器将目录最小单位转换成显示金额，Pancake 结账计算税费。核验成功付款的商品金额、税额和总额；Business 订单、统计与监控保存税前商品金额，不含 Waffo 代收税额。支持 USD/EUR/GBP/HKD/CNY（两位小数）及 JPY（整数），其他币种明确拒绝。结账窗口限剩余 1 分钟至 24 小时，复用 `order.id` 作为官方幂等键。
 
@@ -1197,3 +1199,5 @@ pnpm pack:sdk
 PayPal 实现和测试分别位于 `packages/paypal/src/index.ts`、`packages/paypal/test/paypal.test.ts`；通用订阅实现在 `packages/subscription/src`，credits 实现在 `packages/credits/src`，组合业务实现在 `packages/business/src`。三个支付适配器位于各自包的 `src/business.ts`，Waffo 位于 `packages/waffo`。`pnpm test:sdk` 同时运行 SDK 入口、独立 PayPal、Waffo、Stripe 业务支付适配器、通用订阅、credits、business 和 Admin 审计测试。完整 SDK 安装包会包含这些独立包。
 
 请用根目录 `pack:sdk` 生成完整安装包；直接打包本目录只包含入口层。其他独立插件仍保留在工作区中，可按需构建和接入。
+
+SDK 0.5.5 adds Waffo consumed hosted-session inspection through native checkout reconciliation, with optional HTTP boundary and fail-closed status handling. See docs/sdk-0.5.5.md.

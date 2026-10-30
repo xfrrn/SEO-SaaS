@@ -883,7 +883,11 @@ export function createBusinessService<Options extends BetterAuthOptions>(
 			});
 		return purchaseQuote(adapter, referenceId, product);
 	}
-	async function reconcileCheckout(referenceId: string, orderId: string) {
+	async function reconcileCheckout(
+		referenceId: string,
+		orderId: string,
+		closeIfUnpaid = false,
+	) {
 		const order = await getOrder(orderId);
 		if (order.referenceId !== referenceId)
 			throw new APIError("FORBIDDEN", {
@@ -916,8 +920,11 @@ export function createBusinessService<Options extends BetterAuthOptions>(
 			!order.providerOrderId &&
 			Date.now() >= order.expiresAt.getTime()
 				? "closed"
-				: ((await provider(order.provider).inspectCheckout?.(order))?.state ??
-					"unknown");
+				: ((
+						await provider(order.provider).inspectCheckout?.(order, {
+							closeIfUnpaid,
+						})
+					)?.state ?? "unknown");
 		if (state === "paid")
 			return { order: await completeCheckout(referenceId, orderId), state };
 		if (state === "closed")

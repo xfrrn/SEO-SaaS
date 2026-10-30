@@ -139,6 +139,70 @@ function setup() {
 
 /** @see https://docs.waffo.ai/api-reference/endpoints/orders/create-checkout-session */
 describe("Waffo Business adapter", () => {
+	it("uses each immutable product snapshot binding for checkout and verification", async () => {
+		const { order, product, payment, options, fetcher } = setup();
+		const provider = createWaffoBusinessProvider({
+			...options,
+			productId: undefined,
+		});
+		for (const id of [
+			"PROD_aaaaaaaaaaaaaaaaaaaaaa",
+			"PROD_bbbbbbbbbbbbbbbbbbbbbb",
+		]) {
+			const savedOrder = structuredClone(order);
+			savedOrder.product.limits = { payments: { waffo: { productId: id } } };
+			product.id = id;
+			payment.onetimeOrder.onetimeProduct.id = id;
+			await provider.createCheckout(savedOrder);
+			expect(
+				JSON.parse(String(fetcher.mock.calls.at(-1)![1]?.body)).productId,
+			).toBe(id);
+			await expect(
+				provider.verifyPayment({ order: savedOrder, reference: "cs_checkout" }),
+			).resolves.toMatchObject({ amount: 1999 });
+			const changedFallback = createWaffoBusinessProvider({
+				...options,
+				productId: "PROD_newglobal",
+			});
+			await expect(
+				changedFallback.verifyPayment({
+					order: savedOrder,
+					reference: "cs_checkout",
+				}),
+			).resolves.toMatchObject({ amount: 1999 });
+			payment.onetimeOrder.onetimeProduct.id = "PROD_other";
+			await expect(
+				provider.verifyPayment({ order: savedOrder, reference: "cs_checkout" }),
+			).rejects.toThrow("do not match");
+		}
+	});
+	it("never falls back for explicitly cleared or malformed bindings and makes no network request", async () => {
+		const invalid: BusinessOrder["product"]["limits"][string][] = [
+			{ waffo: { productId: null } },
+			{ waffo: { productId: "" } },
+			{ waffo: { productId: "https://example.com" } },
+			{ waffo: null },
+			"invalid",
+			{ waffo: {} },
+		];
+		for (const payments of invalid) {
+			const { provider, order, fetcher } = setup();
+			order.product.limits = { payments };
+			await expect(provider.createCheckout(order)).rejects.toThrow(
+				"Waffo product",
+			);
+			expect(fetcher).not.toHaveBeenCalled();
+		}
+		const { options, order, fetcher } = setup();
+		const provider = createWaffoBusinessProvider({
+			...options,
+			productId: undefined,
+		});
+		await expect(provider.createCheckout(order)).rejects.toThrow(
+			"not configured",
+		);
+		expect(fetcher).not.toHaveBeenCalled();
+	});
 	it("signs checkout with an idempotency key, decimal price and merchant order binding", async () => {
 		const { provider, order, fetcher } = setup();
 		await expect(provider.createCheckout(order)).resolves.toMatchObject({
@@ -350,4 +414,221 @@ it("verifies raw RSA webhooks, environment, store and replay window before retur
 		new Request("https://app.example/webhook", { method: "POST", body: "{}" }),
 	])
 		await expect(provider.verifyWebhook(delivery)).rejects.toThrow();
+});
+
+describe("hosted checkout recovery", () => {
+	it("proves an unavailable session closed only with a scoped merchant lookup and no active order", async () => {
+		const { options, order, fetcher, product } = setup();
+		order.checkoutURL = `https://pancake.waffo.ai/store/test-store/checkout/${order.providerOrderId}`;
+		const probe = vi.fn<typeof fetch>();
+		const provider = createWaffoBusinessProvider({ ...options, fetch: probe });
+		for (const session of [null, { id: order.providerOrderId }]) {
+			fetcher.mockResolvedValueOnce(
+				Response.json({
+					data: {
+						store: { id: options.storeId, slug: "test-store" },
+						onetimeOrders: [],
+					},
+				}),
+			);
+			probe.mockResolvedValueOnce(
+				Response.json({
+					sessionResult: { status: 200, data: { checkoutSession: session } },
+				}),
+			);
+			await expect(provider.inspectCheckout!(order)).resolves.toEqual({
+				state: session === null ? "closed" : "open",
+			});
+		}
+		expect(String(probe.mock.calls[0]![0])).toContain(
+			"/api/checkout/bootstrap?",
+		);
+		expect(
+			new URL(String(probe.mock.calls[0]![0])).searchParams.get("env"),
+		).toBe("test");
+		const remote = {
+			id: "ORD_test",
+			orderMerchantExternalId: order.id,
+			status: "canceled",
+			testMode: true,
+			store: { id: options.storeId },
+			onetimeProduct: { id: product.id },
+		};
+		fetcher.mockResolvedValueOnce(
+			Response.json({
+				data: {
+					store: { id: options.storeId, slug: "test-store" },
+					onetimeOrders: [remote],
+				},
+			}),
+		);
+		probe.mockResolvedValueOnce(
+			Response.json({
+				sessionResult: { status: 200, data: { checkoutSession: null } },
+			}),
+		);
+		await expect(provider.inspectCheckout!(order)).resolves.toEqual({
+			state: "closed",
+		});
+	});
+	it("keeps unknown or active transactions reserved and recognizes completed orders", async () => {
+		const { options, order, fetcher, product } = setup();
+		order.checkoutURL = `https://pancake.waffo.ai/store/test-store/checkout/${order.providerOrderId}`;
+		const probe = vi.fn<typeof fetch>();
+		const provider = createWaffoBusinessProvider({ ...options, fetch: probe });
+		const remote = {
+			id: "ORD_test",
+			orderMerchantExternalId: order.id,
+			status: "pending",
+			testMode: true,
+			store: { id: options.storeId },
+			onetimeProduct: { id: product.id },
+		};
+		for (const [rows, state] of [
+			[[remote], "unknown"],
+			[[{ ...remote, status: "completed" }], "paid"],
+			[[{ ...remote, testMode: false }], "unknown"],
+			[[{ ...remote, orderMerchantExternalId: "other" }], "unknown"],
+			[[{ ...remote, onetimeProduct: { id: "other" } }], "unknown"],
+			[[remote, remote], "unknown"],
+		] as const) {
+			fetcher.mockResolvedValueOnce(
+				Response.json({
+					data: {
+						store: { id: options.storeId, slug: "test-store" },
+						onetimeOrders: rows,
+					},
+				}),
+			);
+			await expect(provider.inspectCheckout!(order)).resolves.toEqual({
+				state,
+			});
+		}
+		expect(probe).not.toHaveBeenCalled();
+	});
+	it("never closes a checkout on partial queries, probe errors, malformed data or an untrusted host", async () => {
+		const { options, order, fetcher } = setup();
+		const probe = vi.fn<typeof fetch>();
+		const provider = createWaffoBusinessProvider({ ...options, fetch: probe });
+		const data = {
+			store: { id: options.storeId, slug: "test-store" },
+			onetimeOrders: [],
+		};
+		fetcher.mockResolvedValueOnce(
+			Response.json({ data, errors: [{ message: "partial" }] }),
+		);
+		await expect(provider.inspectCheckout!(order)).resolves.toEqual({
+			state: "unknown",
+		});
+		order.checkoutURL = `https://evil.example/store/test-store/checkout/${order.providerOrderId}`;
+		fetcher.mockResolvedValueOnce(Response.json({ data }));
+		await expect(provider.inspectCheckout!(order)).resolves.toEqual({
+			state: "unknown",
+		});
+		expect(probe).not.toHaveBeenCalled();
+		order.checkoutURL = `https://pancake.waffo.ai/store/test-store/checkout/${order.providerOrderId}`;
+		for (const response of [
+			new Response(null, { status: 503 }),
+			Response.json({}),
+			Response.json({
+				sessionResult: {
+					status: 200,
+					errors: [{}],
+					data: { checkoutSession: null },
+				},
+			}),
+		]) {
+			fetcher.mockResolvedValueOnce(Response.json({ data }));
+			probe.mockResolvedValueOnce(response);
+			await expect(provider.inspectCheckout!(order)).resolves.toEqual({
+				state: "unknown",
+			});
+		}
+		fetcher.mockResolvedValueOnce(Response.json({ data }));
+		probe.mockRejectedValueOnce(new Error("network"));
+		await expect(provider.inspectCheckout!(order)).rejects.toThrow("network");
+	});
+});
+
+it("closes a failed consumed order only on explicit retry and confirmed provider cancellation", async () => {
+	const { options, order, fetcher, product } = setup();
+	order.checkoutURL = `https://pancake.waffo.ai/store/test-store/checkout/${order.providerOrderId}`;
+	const remote = {
+		id: "ORD_failed",
+		orderMerchantExternalId: order.id,
+		status: "pending",
+		testMode: true,
+		buyerEmail: "fixture@example.test",
+		store: { id: options.storeId },
+		onetimeProduct: { id: product.id },
+		payments: [{ id: "PAY_failed", status: "failed" }],
+	};
+	const data = {
+		store: { id: options.storeId, slug: "test-store" },
+		onetimeOrders: [remote],
+	};
+	const probe = vi
+		.fn<typeof fetch>()
+		.mockResolvedValue(
+			Response.json({
+				sessionResult: { status: 200, data: { checkoutSession: null } },
+			}),
+		);
+	const issue = vi
+		.spyOn(options.client.auth, "issueSessionToken")
+		.mockResolvedValue({
+			token: "customer-token",
+			expiresAt: new Date().toISOString(),
+		});
+	const cancel = vi
+		.fn()
+		.mockResolvedValue({ orderId: remote.id, status: "canceled" });
+	vi.spyOn(options.client, "customer").mockReturnValue({
+		cancelOnetimeOrder: cancel,
+	} as unknown as ReturnType<typeof options.client.customer>);
+	const provider = createWaffoBusinessProvider({ ...options, fetch: probe });
+	fetcher.mockResolvedValueOnce(Response.json({ data }));
+	await expect(provider.inspectCheckout!(order)).resolves.toEqual({
+		state: "unknown",
+	});
+	expect(issue).not.toHaveBeenCalled();
+	fetcher.mockResolvedValueOnce(Response.json({ data }));
+	fetcher.mockResolvedValueOnce(
+		Response.json({
+			data: {
+				onetimeOrder: {
+					id: remote.id,
+					orderMerchantExternalId: order.id,
+					status: "canceled",
+				},
+			},
+		}),
+	);
+	await expect(
+		provider.inspectCheckout!(order, { closeIfUnpaid: true }),
+	).resolves.toEqual({ state: "closed" });
+	expect(issue).toHaveBeenCalledWith({
+		storeId: options.storeId,
+		buyerIdentity: remote.buyerEmail,
+	});
+	expect(cancel).toHaveBeenCalledWith(
+		{ orderId: remote.id },
+		{ idempotencyKey: `close-${order.id}` },
+	);
+	for (const status of ["pending", "succeeded"]) {
+		fetcher.mockResolvedValueOnce(
+			Response.json({
+				data: {
+					...data,
+					onetimeOrders: [
+						{ ...remote, payments: [{ id: "PAY_processing", status }] },
+					],
+				},
+			}),
+		);
+		await expect(
+			provider.inspectCheckout!(order, { closeIfUnpaid: true }),
+		).resolves.toEqual({ state: status === "succeeded" ? "paid" : "unknown" });
+	}
+	expect(cancel).toHaveBeenCalledTimes(1);
 });

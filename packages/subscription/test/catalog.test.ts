@@ -1,5 +1,6 @@
 import { getTestInstance } from "better-auth/test";
 import { describe, expect, it } from "vitest";
+import type { Product } from "../src";
 import { createProductService, productPlanName, subscription } from "../src";
 import {
 	createProductSchema,
@@ -21,6 +22,57 @@ const product = {
 };
 
 describe("persistent subscription catalog", () => {
+	it("versions and clears Waffo bindings without overwriting other product limits", async () => {
+		const { auth } = await getTestInstance({
+			plugins: [subscription({ catalog: true })],
+		});
+		const service = createProductService((await auth.$context).adapter);
+		const first = await service.save({
+			...product,
+			limits: {
+				projects: 10,
+				payments: {
+					waffo: { productId: "PROD_original" },
+					other: { configured: true },
+				},
+			},
+		});
+		const next = await service.save({
+			...first,
+			expectedVersion: first.version,
+			limits: {
+				...first.limits,
+				payments: { waffo: { productId: null }, other: { configured: true } },
+			},
+		});
+		expect((await service.get(first.id))?.limits.payments).toEqual({
+			waffo: { productId: "PROD_original" },
+			other: { configured: true },
+		});
+		expect(next.limits).toEqual({
+			projects: 10,
+			payments: { waffo: { productId: null }, other: { configured: true } },
+		});
+		const invalid: Product["limits"][string][] = [
+			null,
+			[],
+			"invalid",
+			{ waffo: null },
+			{ waffo: {} },
+			{ waffo: { productId: 123 } },
+			{ waffo: { productId: "https://example.com" } },
+			{ waffo: { productId: "PROD_with spaces" } },
+			{ waffo: { productId: `PROD_${"a".repeat(128)}` } },
+		];
+		for (const payments of invalid)
+			await expect(
+				service.save({
+					...next,
+					expectedVersion: next.version,
+					limits: { payments },
+				}),
+			).rejects.toThrow("Invalid payment product bindings");
+	});
 	it("preserves ISO strings in JSON limits through publication changes", async () => {
 		const { auth } = await getTestInstance({
 			plugins: [subscription({ catalog: true })],

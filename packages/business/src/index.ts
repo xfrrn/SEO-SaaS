@@ -360,13 +360,17 @@ export function business(options: BusinessOptions = {}) {
 					method: "POST",
 					requireHeaders: true,
 					use: [sessionMiddleware],
-					body: z.object({ orderId: identifier }),
+					body: z.object({
+						orderId: identifier,
+						closeIfUnpaid: z.boolean().optional(),
+					}),
 					metadata: { noStore: true },
 				},
 				async (ctx) =>
 					service(ctx).reconcileCheckout(
 						ctx.context.session.user.id,
 						ctx.body.orderId,
+						ctx.body.closeIfUnpaid,
 					),
 			),
 			createBusinessOrder: createAuthEndpoint(

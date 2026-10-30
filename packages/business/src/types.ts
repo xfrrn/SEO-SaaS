@@ -68,6 +68,7 @@ export interface BusinessPaymentProvider {
 	/** A closed result must prove the checkout is unpaid and cannot accept another payment. */
 	inspectCheckout?: (
 		order: BusinessOrder,
+		options?: { closeIfUnpaid?: boolean },
 	) => Promise<{ state: "open" | "paid" | "closed" | "unknown" }>;
 	/** Reuse order.id as the provider idempotency key. Values come from the persisted order. */
 	createCheckout(order: BusinessOrder): Promise<{

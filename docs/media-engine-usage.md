@@ -1,5 +1,7 @@
 # Central media service (SDK 0.4.0)
 
+SDK 0.5.7 adds compatible soundtrack snapshots and task-scoped derivative upload/read grants; see [delivery contract](sdk-0.5.7.md). The consumer website executes merging, while Engine retains private storage, source binding, inspection, publication and expiry authority.
+
 Use the server-only `@app/auth-sdk/media-engine` entry for new websites. It transports verified user/admin context, validates responses, preserves stable request keys and verifies raw-byte webhooks. It has no supplier executor or media downloader. Legacy generation/moderation exports remain until consumer migration is verified.
 
 ```ts
